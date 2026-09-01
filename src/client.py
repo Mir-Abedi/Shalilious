@@ -17,6 +17,11 @@ class Client:
             drop_last=False,
         )
         self._it = iter(self.loader)
+        # Separate loader for drift measurement: no shuffling, so the accumulation order
+        # (and thus the float rounding) is identical every time it is called.
+        self.grad_loader = DataLoader(
+            Subset(dataset, list(indices)), batch_size=min(512, self.n), shuffle=False
+        )
 
     def _next_batch(self):
         """Endless stream over this client's shard: a small shard just gets revisited more."""
@@ -44,3 +49,27 @@ class Client:
             opt.step()
             grads += y.numel()
         return {k: v.detach().clone() for k, v in self.model.state_dict().items()}, grads
+
+    def full_gradient(self, state):
+        """Exact gradient of this client's mean loss over its WHOLE shard, at `state`.
+
+        Full-shard, not mini-batch: a sampled estimate carries noise that would put a
+        floor under the drift measurement even when clients genuinely agree. Accumulating
+        `reduction="sum"` and dividing once at the end is the mean-loss gradient exactly.
+
+        eval() mode so dropout and BatchNorm batch statistics stay out of a measurement
+        that is supposed to depend only on the data and the weights.
+        """
+        self.model.load_state_dict(state)
+        self.model.eval()
+        self.model.zero_grad(set_to_none=True)
+        n = 0
+        for x, y in self.grad_loader:
+            x, y = x.to(self.device), y.to(self.device)
+            F.cross_entropy(self.model(x), y, reduction="sum").backward()
+            n += y.numel()
+        flat = [
+            (p.grad / n).reshape(-1) if p.grad is not None else torch.zeros(p.numel())
+            for p in self.model.parameters()
+        ]
+        return torch.cat(flat).detach()

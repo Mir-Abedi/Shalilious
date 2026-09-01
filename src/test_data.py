@@ -111,11 +111,74 @@ def test_one_local_step_matches_plain_sgd():
         assert torch.allclose(got[k], v, atol=1e-5), f"{k} diverged from plain SGD"
 
 
+
+
+
+def test_label_heterogeneity_bounds():
+    """H_label = I(C;Y)/H(Y): 0 when clients look alike, 1 when the client names the label."""
+    import numpy as np
+
+    from data import label_heterogeneity
+
+    labels = np.array([0, 1, 0, 1, 0, 1, 0, 1])
+
+    same = [[0, 1], [2, 3], [4, 5], [6, 7]]  # every client sees the same 50/50 mix
+    assert abs(label_heterogeneity(labels, same)) < 1e-12, label_heterogeneity(labels, same)
+
+    split = [[0, 2, 4, 6], [1, 3, 5, 7]]  # each client holds exactly one label
+    assert abs(label_heterogeneity(labels, split) - 1.0) < 1e-12
+
+    part = [[0, 1, 2, 4], [3, 5, 6, 7]]  # a partial skew lands strictly between
+    h = label_heterogeneity(labels, part)
+    assert 0.0 < h < 1.0, h
+
+
+def _two_client_server(ds, n_each):
+    from client import Client
+    from models import small_cnn
+    from server import Server
+
+    a = Client(ds, list(range(n_each)), small_cnn, 3, 0.1, "cpu")
+    b = Client(ds, list(range(n_each, 2 * n_each)), small_cnn, 3, 0.1, "cpu")
+    return Server(small_cnn(), [a, b], ds, list(range(2 * n_each)), "cpu")
+
+
+def test_drift_is_zero_for_identical_clients():
+    """Same data on both clients => same exact gradient => drift is 0, not merely small."""
+    import torch
+
+    torch.manual_seed(0)
+    xs = torch.randn(6, 3, 32, 32)
+    ys = torch.randint(0, 100, (6,))
+    ds = list(zip(xs, ys)) + list(zip(xs, ys))  # the same 6 examples, twice
+    srv = _two_client_server(ds, 6)
+    drift, gnorm = srv.measure_drift(srv.model.state_dict())
+    assert drift < 1e-5, f"identical clients drifted by {drift}"
+    assert gnorm > 0, "global gradient should not be zero at init"
+
+
+def test_drift_is_positive_for_disagreeing_clients():
+    """Positive control: label-skewed clients must register real drift."""
+    import torch
+
+    torch.manual_seed(0)
+    xs = torch.randn(6, 3, 32, 32)
+    ds = list(zip(xs, torch.zeros(6, dtype=torch.long))) + list(
+        zip(xs, torch.full((6,), 7, dtype=torch.long))
+    )
+    srv = _two_client_server(ds, 6)
+    drift, _ = srv.measure_drift(srv.model.state_dict())
+    assert drift > 1e-3, f"disagreeing clients showed no drift: {drift}"
+
+
 if __name__ == "__main__":
     test_partitions_are_disjoint_covers()
     test_low_alpha_concentrates_superclasses()
     test_iid_shards_are_near_equal()
     test_models_output_100_logits()
+    test_label_heterogeneity_bounds()
+    test_drift_is_zero_for_identical_clients()
+    test_drift_is_positive_for_disagreeing_clients()
     test_aggregate_is_a_weighted_mean()
     test_one_local_step_matches_plain_sgd()
     print("ok")

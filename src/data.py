@@ -64,3 +64,35 @@ def dirichlet(coarse, pool, n_clients, rng, alpha=0.5):
         for i, part in enumerate(np.split(idx, cuts)):
             shards[i].extend(part.tolist())
     return shards
+
+
+def _entropy(p):
+    p = p[p > 0]
+    return float(-(p * np.log(p)).sum())
+
+
+def label_heterogeneity(labels, shards):
+    """Normalized label skew of a partition: H_label = I(C;Y)/H(Y) = 1 - H(Y|C)/H(Y).
+
+    C is "which client did this example come from", Y is its label. 0 means every client
+    has the same label distribution (knowing the client tells you nothing about the
+    label); 1 means the client determines the label outright.
+
+    Pass the COARSE superclasses as `labels` -- that is what the skew is drawn over, and
+    it spans the full [0, 1]. Over the 100 fine labels the same partition gives the same
+    curve scaled by log(20)/log(100).
+    """
+    labels = np.asarray(labels)
+    idx = [np.asarray(s, dtype=np.int64) for s in shards if len(s) > 0]
+    if not idx:
+        raise ValueError("every shard is empty")
+    all_idx = np.concatenate(idx)
+    n_lab = int(labels.max()) + 1
+    h_y = _entropy(np.bincount(labels[all_idx], minlength=n_lab) / len(all_idx))
+    if h_y == 0:
+        return 0.0  # one label everywhere: no information for the client to carry
+    h_y_given_c = sum(
+        (len(s) / len(all_idx)) * _entropy(np.bincount(labels[s], minlength=n_lab) / len(s))
+        for s in idx
+    )
+    return float(1.0 - h_y_given_c / h_y)
