@@ -1,4 +1,4 @@
-# Drift vs. label heterogeneity -- 63 runs, one per (H_label, seed).
+# Drift vs. label heterogeneity -- 21 jobs, one per H_label, each running seeds 0,1,2.
 # Submit from the repo root:  condor_submit jobs/drift_sweep.sub
 # See jobs/experiments.md for what this measures.
 
@@ -6,7 +6,7 @@ universe                = docker
 docker_image            = amirabedi/torch-with-other-stuff-1.0.2
 
 executable              = jobs/drift_one.sh
-arguments               = $(h) $(seed)
+arguments               = $(h)
 initialdir              = $ENV(PWD)
 
 request_cpus            = 2
@@ -14,9 +14,9 @@ request_gpus            = 1
 request_memory          = 8GB
 
 log                     = jobs/logs/drift.log
-output                  = jobs/logs/drift_h$(h)_s$(seed).out
-error                   = jobs/logs/drift_h$(h)_s$(seed).err
+output                  = jobs/logs/drift_h$(h).out
+error                   = jobs/logs/drift_h$(h).err
 
 should_transfer_files   = NO
 
-queue h, seed from jobs/drift_params.txt
+queue h from jobs/drift_params.txt

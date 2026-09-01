@@ -34,7 +34,7 @@ what is measured at them.
 
 **Configuration.** small_cnn, full CIFAR-100, 20 clients, 100 rounds, K=5 local steps,
 lr 0.05, batch 64, drift measured every 5 rounds (20 samples per run), loss every 10.
-H_label swept over {0.00, 0.05, 0.10, ..., 1.00} at seeds 0, 1, 2 -- 63 runs.
+H_label swept over {0.00, 0.05, 0.10, ..., 1.00} at seeds 0, 1, 2 -- 21 jobs, one per H, each running all three seeds.
 
 **Sweeping H directly.** Rather than sweep Dirichlet alpha and measure whatever
 heterogeneity comes out, `src/data.py:by_target_h` GENERATES a partition at a prescribed
@@ -61,7 +61,7 @@ this sweep varies.
 **Running.**
 
     jobs/drift_sweep.sh                    # sequential, local
-    condor_submit jobs/drift_sweep.sub     # cluster, 63 parallel jobs
+    condor_submit jobs/drift_sweep.sub     # cluster, 21 parallel jobs
 
 **Results.** One CSV per run in `runs/`, named
 `small_cnn_targeth<H>_n20_K5_lr0.05_s<seed>.csv`, with columns
