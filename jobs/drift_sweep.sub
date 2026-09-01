@@ -1,4 +1,4 @@
-# Drift vs. label heterogeneity -- 33 runs, one per (H_label, seed).
+# Drift vs. label heterogeneity -- 63 runs, one per (H_label, seed).
 # Submit from the repo root:  condor_submit jobs/drift_sweep.sub
 # See jobs/experiments.md for what this measures.
 
