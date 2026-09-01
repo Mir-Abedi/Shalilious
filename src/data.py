@@ -96,3 +96,16 @@ def label_heterogeneity(labels, shards):
         for s in idx
     )
     return float(1.0 - h_y_given_c / h_y)
+
+
+def by_superclass(coarse, pool, n_clients, rng):
+    """Deterministic pathological split: superclasses dealt out in contiguous blocks.
+
+    With n_clients == 20 every client holds exactly one superclass, so H_label == 1 --
+    the top of the range, which Dirichlet cannot reach at any alpha because it never
+    produces a clean permutation by chance (alpha=0.003 over 20 clients still only
+    averages 0.80, and starts emptying shards). `rng` is unused: this partition is fixed.
+    """
+    pool = np.array(pool, dtype=np.int64)
+    groups = np.array_split(np.arange(N_COARSE), n_clients)
+    return [pool[np.isin(coarse[pool], g)].tolist() for g in groups]

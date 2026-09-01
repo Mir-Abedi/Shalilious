@@ -1,7 +1,7 @@
 """Self-checks for the data partitioners. Run: python src/test_data.py"""
 import numpy as np
 
-from data import dirichlet, iid
+from data import by_superclass, dirichlet, iid
 
 
 def _fake(n=2000, n_coarse=20, seed=0):
@@ -34,6 +34,7 @@ def test_partitions_are_disjoint_covers():
     for name, shards in [
         ("iid", iid(coarse, pool, 5, np.random.default_rng(0))),
         ("dir", dirichlet(coarse, pool, 5, np.random.default_rng(0), alpha=0.5)),
+        ("sup", by_superclass(coarse, pool, 5, np.random.default_rng(0))),
     ]:
         assert len(shards) == 5, name
         flat = np.concatenate([np.array(s, dtype=np.int64) for s in shards])
@@ -133,6 +134,20 @@ def test_label_heterogeneity_bounds():
     assert 0.0 < h < 1.0, h
 
 
+def test_by_superclass_reaches_maximum_heterogeneity():
+    """One superclass per client is H_label == 1 exactly -- the anchor Dirichlet cannot hit."""
+    import numpy as np
+
+    from data import by_superclass, label_heterogeneity
+
+    coarse = np.tile(np.arange(20), 100)
+    pool = np.arange(2000)
+    shards = by_superclass(coarse, pool, 20, np.random.default_rng(0))
+    assert all(len(s) == 100 for s in shards), [len(s) for s in shards]
+    h = label_heterogeneity(coarse, shards)
+    assert abs(h - 1.0) < 1e-12, h
+
+
 def _two_client_server(ds, n_each):
     from client import Client
     from models import small_cnn
@@ -177,6 +192,7 @@ if __name__ == "__main__":
     test_iid_shards_are_near_equal()
     test_models_output_100_logits()
     test_label_heterogeneity_bounds()
+    test_by_superclass_reaches_maximum_heterogeneity()
     test_drift_is_zero_for_identical_clients()
     test_drift_is_positive_for_disagreeing_clients()
     test_aggregate_is_a_weighted_mean()

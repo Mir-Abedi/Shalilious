@@ -8,11 +8,11 @@ import numpy as np
 import torch
 
 from client import Client
-from data import dirichlet, iid, label_heterogeneity, load_cifar100
+from data import by_superclass, dirichlet, iid, label_heterogeneity, load_cifar100
 from models import resnet18, small_cnn
 from server import Server
 
-PARTITIONS = {"iid": iid, "dirichlet": dirichlet}
+PARTITIONS = {"iid": iid, "dirichlet": dirichlet, "by_superclass": by_superclass}
 SERVERS = {"fedavg": Server}
 MODELS = {"small_cnn": small_cnn, "resnet18": resnet18}
 

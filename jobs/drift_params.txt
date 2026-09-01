@@ -1,3 +1,6 @@
+by_superclass, 0, 0
+by_superclass, 0, 1
+by_superclass, 0, 2
 iid, 0, 0
 iid, 0, 1
 iid, 0, 2

@@ -13,6 +13,6 @@ PY=.venv/bin/python
 
 exec "$PY" src/main.py \
   --partition "$PARTITION" --alpha "$ALPHA" --seed "$SEED" \
-  --clients 10 --rounds 100 --local-steps 5 \
+  --clients 20 --rounds 100 --local-steps 5 \
   --model small_cnn --lr 0.05 --batch-size 64 \
   --eval-every 10 --drift-every 5

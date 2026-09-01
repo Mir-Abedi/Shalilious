@@ -32,25 +32,46 @@ noise floor under the measurement and the IID baseline would not come out near z
 number of local steps. K=5 decides which points along the trajectory get measured, not
 what is measured at them.
 
-**Configuration.** small_cnn, full CIFAR-100, 10 clients, 100 rounds, K=5 local steps,
+**Configuration.** small_cnn, full CIFAR-100, 20 clients, 100 rounds, K=5 local steps,
 lr 0.05, batch 64, drift measured every 5 rounds (20 samples per run), loss every 10.
-Heterogeneity swept as `iid` plus `dirichlet` alpha in
-{1000, 10, 3, 1, 0.5, 0.3, 0.1, 0.05, 0.01}, each at seeds 0, 1, 2 -- 30 runs.
+Heterogeneity swept as `iid`, `dirichlet` alpha in
+{1000, 10, 3, 1, 0.5, 0.3, 0.1, 0.05, 0.01}, and `by_superclass`, each at seeds 0, 1, 2 --
+33 runs. `by_superclass` ignores alpha and the rng, so its three seeds differ only in model
+init and batch order, not in the partition.
 
-**Ceiling on the x-axis.** With 10 clients over 20 superclasses, even alpha -> 0 can only
-give each client about 2 superclasses, so H_label saturates near 1 - ln(2)/ln(20) = 0.77;
-alpha = 0.01 measures 0.68 in practice. The sweep therefore covers roughly [0, 0.7], not
-the full [0, 1]. Reaching 1 would need at least 20 clients (one superclass each). Measured
-values across the grid: alpha 1000 -> 0.000, 10 -> 0.017, 1 -> 0.123, 0.3 -> 0.292,
-0.1 -> 0.456, 0.01 -> 0.677.
+**Covering the full [0, 1].** 20 clients over 20 superclasses is what makes H_label = 1
+attainable, but Dirichlet alone does not get there: it never produces a clean
+one-superclass-per-client permutation by chance, so it plateaus near 0.76 at alpha = 0.01
+and starts emptying shards below that (alpha = 0.003 averages 0.80 with ~4 clients dropped).
+The `by_superclass` partition deals superclasses out in contiguous blocks, giving exactly
+one per client and H_label = 1 exactly. It anchors the top of the range; `iid` anchors the
+bottom.
+
+Measured over the full 50k training set, 20 clients, averaged over seeds 0-2:
+
+    partition            H_label   empty shards
+    iid                   0.0012        0
+    dirichlet 1000        0.0002        0
+    dirichlet 10          0.0147        0
+    dirichlet 3           0.0462        0
+    dirichlet 1           0.1286        0
+    dirichlet 0.5         0.2172        0
+    dirichlet 0.3         0.3081        0
+    dirichlet 0.1         0.5047        0
+    dirichlet 0.05        0.6299        0
+    dirichlet 0.01        0.7574      1.3
+    by_superclass         1.0000        0
+
+Clients whose shard comes out empty are dropped with a warning, so alpha = 0.01 runs on
+about 19 clients rather than 20. Drift is a mean over the surviving clients.
 
 **Running.**
 
     jobs/drift_sweep.sh                    # sequential, local
-    condor_submit jobs/drift_sweep.sub     # cluster, 30 parallel jobs
+    condor_submit jobs/drift_sweep.sub     # cluster, 33 parallel jobs
 
 **Results.** One CSV per run in `runs/`, named
-`small_cnn_<partition><alpha>_n10_K5_lr0.05_s<seed>.csv`, with columns
+`small_cnn_<partition><alpha>_n20_K5_lr0.05_s<seed>.csv`, with columns
 `round, grad_computations, train_loss, drift, grad_norm, h_label`. The drift and
 grad_norm cells are empty on rows that were logged but not measured.
 
