@@ -25,3 +25,9 @@ clients, and the fraction of participating clients per round.
 
 - `jobs/` — runner scripts (`.sh`, `.sub`)
 - `plots/` — generated figures
+
+## Running
+
+`.venv/bin/python src/main.py --local-steps 1` is mini-batch SGD; `--local-steps 5` is Local SGD.
+Add `--partition dirichlet --alpha 0.1` for a skewed split. Results land in `runs/*.csv`.
+Self-checks: `.venv/bin/python src/test_data.py`.
