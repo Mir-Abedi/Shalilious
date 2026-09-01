@@ -148,6 +148,29 @@ def test_by_superclass_reaches_maximum_heterogeneity():
     assert abs(h - 1.0) < 1e-12, h
 
 
+def test_by_target_h_hits_its_target():
+    """The generator and the metric must agree: ask for H, measure H back."""
+    import numpy as np
+
+    from data import by_target_h, label_heterogeneity
+
+    coarse = np.tile(np.arange(20), 250)
+    pool = np.arange(5000)
+    for target in (0.0, 0.25, 0.5, 0.75, 1.0):
+        shards = by_target_h(coarse, pool, 20, np.random.default_rng(0), h=target)
+        got = label_heterogeneity(coarse, shards)
+        assert abs(got - target) < 0.01, f"asked for {target}, measured {got}"
+        sizes = [len(x) for x in shards]
+        assert max(sizes) - min(sizes) <= 0.02 * max(sizes), sizes  # size must not confound H
+
+    try:  # a target above the ceiling must raise, not silently miss
+        by_target_h(coarse, pool, 5, np.random.default_rng(0), h=0.9)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("h=0.9 with 5 clients should be rejected")
+
+
 def _two_client_server(ds, n_each):
     from client import Client
     from models import small_cnn
@@ -193,6 +216,7 @@ if __name__ == "__main__":
     test_models_output_100_logits()
     test_label_heterogeneity_bounds()
     test_by_superclass_reaches_maximum_heterogeneity()
+    test_by_target_h_hits_its_target()
     test_drift_is_zero_for_identical_clients()
     test_drift_is_positive_for_disagreeing_clients()
     test_aggregate_is_a_weighted_mean()

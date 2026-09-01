@@ -8,11 +8,13 @@ import numpy as np
 import torch
 
 from client import Client
-from data import by_superclass, dirichlet, iid, label_heterogeneity, load_cifar100
+from data import (by_superclass, by_target_h, dirichlet, iid, label_heterogeneity,
+                  load_cifar100)
 from models import resnet18, small_cnn
 from server import Server
 
-PARTITIONS = {"iid": iid, "dirichlet": dirichlet, "by_superclass": by_superclass}
+PARTITIONS = {"iid": iid, "dirichlet": dirichlet, "by_superclass": by_superclass,
+              "target_h": by_target_h}
 SERVERS = {"fedavg": Server}
 MODELS = {"small_cnn": small_cnn, "resnet18": resnet18}
 
@@ -22,6 +24,8 @@ def parse_args():
     p.add_argument("--clients", type=int, default=5)
     p.add_argument("--partition", choices=PARTITIONS, default="iid")
     p.add_argument("--alpha", type=float, default=0.5, help="Dirichlet skew; lower is more skewed")
+    p.add_argument("--target-h", type=float, default=0.5,
+                   help="for --partition target_h: the H_label to generate, in [0, 1]")
     p.add_argument("--local-steps", type=int, default=1, help="1 is mini-batch SGD; >1 is Local SGD")
     p.add_argument("--rounds", type=int, default=100)
     p.add_argument("--lr", type=float, default=0.05)
@@ -40,7 +44,8 @@ def parse_args():
 
 
 def default_out(a):
-    part = f"{a.partition}{a.alpha}" if a.partition == "dirichlet" else a.partition
+    part = {"dirichlet": f"dirichlet{a.alpha}", "target_h": f"targeth{a.target_h}"}.get(
+        a.partition, a.partition)
     return f"runs/{a.model}_{part}_n{a.clients}_K{a.local_steps}_lr{a.lr}_s{a.seed}.csv"
 
 
@@ -53,7 +58,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     dataset, pool, coarse = load_cifar100(a.data_root, a.data_frac, a.seed)
-    kw = {"alpha": a.alpha} if a.partition == "dirichlet" else {}
+    kw = {"dirichlet": {"alpha": a.alpha}, "target_h": {"h": a.target_h}}.get(a.partition, {})
     shards = PARTITIONS[a.partition](coarse, pool, a.clients, rng, **kw)
 
     empty = [i for i, s in enumerate(shards) if len(s) == 0]

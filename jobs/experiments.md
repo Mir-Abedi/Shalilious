@@ -34,36 +34,29 @@ what is measured at them.
 
 **Configuration.** small_cnn, full CIFAR-100, 20 clients, 100 rounds, K=5 local steps,
 lr 0.05, batch 64, drift measured every 5 rounds (20 samples per run), loss every 10.
-Heterogeneity swept as `iid`, `dirichlet` alpha in
-{1000, 10, 3, 1, 0.5, 0.3, 0.1, 0.05, 0.01}, and `by_superclass`, each at seeds 0, 1, 2 --
-33 runs. `by_superclass` ignores alpha and the rng, so its three seeds differ only in model
-init and batch order, not in the partition.
+H_label swept over {0.0, 0.1, ..., 1.0} at seeds 0, 1, 2 -- 33 runs.
 
-**Covering the full [0, 1].** 20 clients over 20 superclasses is what makes H_label = 1
-attainable, but Dirichlet alone does not get there: it never produces a clean
-one-superclass-per-client permutation by chance, so it plateaus near 0.76 at alpha = 0.01
-and starts emptying shards below that (alpha = 0.003 averages 0.80 with ~4 clients dropped).
-The `by_superclass` partition deals superclasses out in contiguous blocks, giving exactly
-one per client and H_label = 1 exactly. It anchors the top of the range; `iid` anchors the
-bottom.
+**Sweeping H directly.** Rather than sweep Dirichlet alpha and measure whatever
+heterogeneity comes out, `src/data.py:by_target_h` GENERATES a partition at a prescribed
+H_label. Each client owns one of the 20 superclasses; a fraction t of every superclass's
+samples goes to its owner and the rest is spread uniformly over all clients, so t=0 is IID
+and t=1 is the pathological split. H_label is a closed form in t, strictly increasing, so t
+is recovered from the requested H by bisection.
 
-Measured over the full 50k training set, 20 clients, averaged over seeds 0-2:
+Two properties that make it the better axis:
 
-    partition            H_label   empty shards
-    iid                   0.0012        0
-    dirichlet 1000        0.0002        0
-    dirichlet 10          0.0147        0
-    dirichlet 3           0.0462        0
-    dirichlet 1           0.1286        0
-    dirichlet 0.5         0.2172        0
-    dirichlet 0.3         0.3081        0
-    dirichlet 0.1         0.5047        0
-    dirichlet 0.05        0.6299        0
-    dirichlet 0.01        0.7574      1.3
-    by_superclass         1.0000        0
+- It hits the target to within 0.001 across [0, 1], so the x-axis is evenly spaced by
+  construction instead of bunched wherever alpha happened to land.
+- Every shard comes out EXACTLY the same size at every H. Under Dirichlet, skew and shard
+  size grow together, so a drift-vs-heterogeneity trend is partly a drift-vs-shard-size
+  trend. Here shard size is held fixed and heterogeneity is the only thing varying.
 
-Clients whose shard comes out empty are dropped with a warning, so alpha = 0.01 runs on
-about 19 clients rather than 20. Drift is a mean over the surviving clients.
+Requires n_clients to divide 20; the reachable ceiling is 1 - log(20/n_clients)/log(20), so
+n_clients = 20 is what spans the full [0, 1]. A target above the ceiling raises rather than
+silently missing.
+
+`dirichlet` and `by_superclass` remain available as partitions; they are simply not what
+this sweep varies.
 
 **Running.**
 
@@ -71,7 +64,7 @@ about 19 clients rather than 20. Drift is a mean over the surviving clients.
     condor_submit jobs/drift_sweep.sub     # cluster, 33 parallel jobs
 
 **Results.** One CSV per run in `runs/`, named
-`small_cnn_<partition><alpha>_n20_K5_lr0.05_s<seed>.csv`, with columns
+`small_cnn_targeth<H>_n20_K5_lr0.05_s<seed>.csv`, with columns
 `round, grad_computations, train_loss, drift, grad_norm, h_label`. The drift and
 grad_norm cells are empty on rows that were logged but not measured.
 

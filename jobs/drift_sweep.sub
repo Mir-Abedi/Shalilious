@@ -3,11 +3,11 @@
 # See jobs/experiments.md for what this measures.
 
 executable              = jobs/drift_one.sh
-arguments               = $(partition) $(alpha) $(seed)
+arguments               = $(h) $(seed)
 initialdir              = $ENV(PWD)
 
-output                  = jobs/logs/drift_$(partition)_$(alpha)_$(seed).out
-error                   = jobs/logs/drift_$(partition)_$(alpha)_$(seed).err
+output                  = jobs/logs/drift_h$(h)_s$(seed).out
+error                   = jobs/logs/drift_h$(h)_s$(seed).err
 log                     = jobs/logs/drift.log
 
 request_cpus            = 2
@@ -18,4 +18,4 @@ request_disk            = 4GB
 should_transfer_files   = NO
 getenv                  = True
 
-queue partition, alpha, seed from jobs/drift_params.txt
+queue h, seed from jobs/drift_params.txt

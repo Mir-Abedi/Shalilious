@@ -109,3 +109,62 @@ def by_superclass(coarse, pool, n_clients, rng):
     pool = np.array(pool, dtype=np.int64)
     groups = np.array_split(np.arange(N_COARSE), n_clients)
     return [pool[np.isin(coarse[pool], g)].tolist() for g in groups]
+
+
+def _h_of_t(t, n_clients):
+    """H_label of the mixture at fraction t. Closed form: every client is symmetric."""
+    m = N_COARSE // n_clients
+    own = t / m + (1 - t) / N_COARSE
+    other = (1 - t) / N_COARSE
+    p = np.concatenate([np.full(m, own), np.full(N_COARSE - m, other)])
+    return 1.0 - _entropy(p) / np.log(N_COARSE)
+
+
+def by_target_h(coarse, pool, n_clients, rng, h=0.5):
+    """Partition with a PRESCRIBED H_label = h, rather than a Dirichlet alpha to be measured.
+
+    Each client owns a block of m = 20/n_clients superclasses. A fraction t of every
+    superclass's samples goes to its owner and the remainder is spread uniformly over all
+    clients, so t=0 is IID and t=1 is the pathological split. Every client ends up with
+    exactly the same number of samples either way, which keeps shard size from confounding
+    the heterogeneity axis. H_label is continuous and strictly increasing in t, so t is
+    recovered from h by bisection.
+
+    n_clients must divide the 20 superclasses. The ceiling is 1 - log(m)/log(20), so only
+    n_clients = 20 spans the full [0, 1]; fewer clients cap lower and this raises rather
+    than silently returning a partition that misses the target.
+    """
+    if N_COARSE % n_clients:
+        raise ValueError(f"n_clients must divide {N_COARSE} superclasses; got {n_clients}")
+    ceiling = _h_of_t(1.0, n_clients)
+    if not -1e-12 <= h <= ceiling + 1e-12:
+        raise ValueError(
+            f"H_label={h} is unreachable with {n_clients} clients (ceiling {ceiling:.4f}); "
+            f"use n_clients={N_COARSE} to span the full [0, 1]"
+        )
+    lo, hi = 0.0, 1.0
+    for _ in range(60):  # 60 halvings puts t well below float resolution
+        mid = (lo + hi) / 2
+        if _h_of_t(mid, n_clients) < h:
+            lo = mid
+        else:
+            hi = mid
+    t = (lo + hi) / 2
+
+    pool = np.array(pool, dtype=np.int64)
+    m = N_COARSE // n_clients
+    shards = [[] for _ in range(n_clients)]
+    for c in range(N_COARSE):
+        idx = pool[coarse[pool] == c]
+        if len(idx) == 0:
+            continue
+        rng.shuffle(idx)
+        n_own = int(round(t * len(idx)))
+        shards[c // m].extend(idx[:n_own].tolist())
+        # Rotate by c: array_split hands its remainder to the earliest chunks, which would
+        # otherwise give the low-numbered clients a systematically larger shard at every
+        # superclass -- a size bias correlated with client index, right on top of the axis
+        # this function exists to control.
+        for i, part in enumerate(np.array_split(idx[n_own:], n_clients)):
+            shards[(i + c) % n_clients].extend(part.tolist())
+    return shards
