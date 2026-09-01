@@ -68,9 +68,54 @@ def test_models_output_100_logits():
         assert out.shape == (2, 100), f"{name} gave {tuple(out.shape)}, want (2, 100)"
 
 
+def test_aggregate_is_a_weighted_mean():
+    import torch
+
+    from server import Server
+
+    srv = Server.__new__(Server)  # aggregate needs no constructed state
+    a = {"w": torch.tensor([0.0, 10.0]), "n": torch.tensor(7)}
+    b = {"w": torch.tensor([4.0, 2.0]), "n": torch.tensor(9)}
+    out = srv.aggregate([a, b], [1.0, 3.0])
+    assert torch.allclose(out["w"], torch.tensor([3.0, 4.0])), out["w"]
+    assert out["n"].item() == 7, "integer buffers must be taken from the first client, not averaged"
+
+
+def test_one_local_step_matches_plain_sgd():
+    """local_steps=1 then averaging IS mini-batch SGD -- the comparison depends on it."""
+    import copy
+
+    import torch
+
+    from client import Client
+    from models import small_cnn
+
+    torch.manual_seed(0)
+    xs = torch.randn(8, 3, 32, 32)
+    ys = torch.randint(0, 100, (8,))
+    ds = list(zip(xs, ys))
+
+    torch.manual_seed(1)
+    ref = small_cnn()
+    start = copy.deepcopy(ref.state_dict())
+    opt = torch.optim.SGD(ref.parameters(), lr=0.1)
+    opt.zero_grad()
+    torch.nn.functional.cross_entropy(ref(xs), ys).backward()
+    opt.step()
+
+    torch.manual_seed(1)
+    c = Client(ds, list(range(8)), small_cnn, batch_size=8, lr=0.1, device="cpu")
+    got, grads = c.local_steps(start, 1)
+    assert grads == 8, grads
+    for k, v in ref.state_dict().items():
+        assert torch.allclose(got[k], v, atol=1e-5), f"{k} diverged from plain SGD"
+
+
 if __name__ == "__main__":
     test_partitions_are_disjoint_covers()
     test_low_alpha_concentrates_superclasses()
     test_iid_shards_are_near_equal()
     test_models_output_100_logits()
+    test_aggregate_is_a_weighted_mean()
+    test_one_local_step_matches_plain_sgd()
     print("ok")
