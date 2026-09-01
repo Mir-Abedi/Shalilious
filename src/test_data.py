@@ -57,8 +57,20 @@ def test_iid_shards_are_near_equal():
     assert sizes.max() - sizes.min() <= 1, f"iid sizes uneven: {sizes}"
 
 
+def test_models_output_100_logits():
+    import torch
+
+    from models import resnet18, small_cnn
+
+    x = torch.randn(2, 3, 32, 32)
+    for name, fn in [("small_cnn", small_cnn), ("resnet18", resnet18)]:
+        out = fn()(x)
+        assert out.shape == (2, 100), f"{name} gave {tuple(out.shape)}, want (2, 100)"
+
+
 if __name__ == "__main__":
     test_partitions_are_disjoint_covers()
     test_low_alpha_concentrates_superclasses()
     test_iid_shards_are_near_equal()
+    test_models_output_100_logits()
     print("ok")
