@@ -1,0 +1,14 @@
+# One-off environment probe: does the image have torch, is the repo visible, is there a GPU?
+# condor_submit jobs/probe.sub   then read jobs/logs/probe.out
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+executable              = jobs/probe.sh
+initialdir              = $ENV(PWD)
+request_cpus            = 1
+request_gpus            = 1
+request_memory          = 4GB
+log                     = jobs/logs/probe.log
+output                  = jobs/logs/probe.out
+error                   = jobs/logs/probe.err
+should_transfer_files   = NO
+queue
