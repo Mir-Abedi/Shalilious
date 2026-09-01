@@ -1,0 +1,7 @@
+.remember/
+*__pycache__/
+CLAUDE.md
+docs/
+.venv/
+data/
+runs/
