@@ -196,7 +196,10 @@ heterogeneity level, and the centralized reference dotted on every panel. Log y-
 ### Results
 
 Run 2026-09-02 on SaarlandHPC, clusters 185329 (32 jobs) and 185330 (reference), all 99
-runs completed with no failures. Budgets land within 5% of the nominal 6e5 (K=150 spends
+runs completed. Several jobs were evicted and restarted by condor mid-run; the numbers
+below are from the completed reruns, verified by asserting every CSV reaches its expected
+final round. An earlier version of this table averaged the evicted partial runs as though
+they had finished, which inflated the whole K=5 row and the reference. Budgets land within 5% of the nominal 6e5 (K=150 spends
 573k: 6 rounds of partial final batches).
 
 Final training loss after 10 epochs (mean of 3 seeds +- sd):
@@ -204,7 +207,7 @@ Final training loss after 10 epochs (mean of 3 seeds +- sd):
         K      H=0.0             H=0.5             H=0.9             H=1.0
     ----------------------------------------------------------------------------
         1   0.0501 +-0.0020   0.0521 +-0.0035   0.0542 +-0.0022   0.0504 +-0.0025
-        5   0.0630 +-0.0182   0.0951 +-0.0319   0.1767 +-0.0720   0.2438 +-0.0828
+        5   0.0527 +-0.0017   0.0758 +-0.0023   0.1345 +-0.0014   0.1945 +-0.0097
        10   0.0527 +-0.0012   0.0802 +-0.0020   0.1893 +-0.0046   0.3747 +-0.0861
        20   0.0532 +-0.0014   0.1299 +-0.0553   0.2403 +-0.0069   0.8228 +-0.2000
        40   0.0546 +-0.0007   0.0847 +-0.0013   0.2867 +-0.0189   1.2170 +-0.0891
@@ -212,7 +215,7 @@ Final training loss after 10 epochs (mean of 3 seeds +- sd):
       100   0.0557 +-0.0012   0.0906 +-0.0045   0.3082 +-0.0156   1.9294 +-0.2873
       150   0.0560 +-0.0011   0.0899 +-0.0003   0.3374 +-0.0242   1.8556 +-0.0082
 
-    centralized SGD (batch 640): 0.0687 +-0.0233
+    centralized SGD (batch 640): 0.0536 +-0.0032
 
 - **At K=1 heterogeneity costs nothing.** 0.0501 / 0.0521 / 0.0542 / 0.0504 across the
   whole H range are within seed noise of each other and of the batch-640 reference. This
@@ -239,12 +242,11 @@ Final training loss after 10 epochs (mean of 3 seeds +- sd):
 - **On homogeneous data there is a usable ceiling on local work; under skew there is
   none.** H=0.0 plateaus at ~0.055 from K=10 onward, so syncing 150x less often is free.
   H=0.9 and H=1.0 are still degrading at K=150.
-- **The centralized reference sits ON the K=1 curves, not below them** (0.0687 +-0.0233
+- **The centralized reference sits ON the K=1 curves, not below them** (0.0536 +-0.0032
   against 0.0501-0.0542), unlike CIFAR-100 where the batch-64 reference was three orders
   of magnitude below everything. That is the batch-size confound CIFAR-100 experiment 2
   diagnosed, corrected: compared at its true effective batch, distribution costs nothing
-  at K=1. Its wider seed spread comes from being a single run per seed rather than an
-  average over 10 clients.
+  at K=1.
 
 ## 3. Trust-region Local SGD: bounding how far clients travel  (MNIST port)
 
