@@ -194,3 +194,54 @@ heterogeneity level, and the centralized reference dotted on every panel. Log y-
 ### Results
 
 _Pending._
+
+## 3. Does the H=1.0 turnover survive when clients outnumber their classes?
+
+> **Cancelled and superseded, 2026-09-02.** Cluster 185325 was killed before completion.
+> The turnover this was designed to explain was in `drift/||g||`, which is no longer
+> plotted at all — experiment 1 now shows absolute drift and final loss only, and both are
+> monotone to H=1.0. The section is kept because the reasoning about the m=1 corner still
+> stands if the question is ever revisited.
+
+**Claim under test.** The drop in `drift/||g||` at H=1.0 in experiment 1 is caused by the
+*m=1 corner* — each client holding exactly one digit, so its local objective is
+single-class cross-entropy with no interior minimum — and not by heterogeneity as such. If
+so, a partition where no client is ever single-class should stay monotone all the way to
+its own ceiling.
+
+**Why 5 clients and not 8.** `by_target_h` requires the client count to divide the label
+groups it skews over, so on MNIST's 10 digits only 10, 5 and 2 are available. 8 would raise
+rather than silently miss the target — and would not fix anything anyway, since blocks of
+[2,2,1,1,1,1,1,1] leave six of eight clients single-class at the top of the range. 5 clients
+gives every client exactly `m=2` digits, at the cost of a ceiling of
+`1 - log(2)/log(10) = 0.6990`.
+
+**The decisive point is H≈0.699**, the ceiling, where each client holds essentially only its
+two digits (measured: 5999 and 5998 of its own, 0–1 of each other digit). That is the exact
+analogue of experiment 1's degenerate corner with `m=2` instead of `m=1`. If the turnover
+reappears there, the cause is heterogeneity; if it does not, the cause is single-class
+degeneracy.
+
+**Configuration.** Identical to experiment 1 except for the client count: `small_cnn`, full
+MNIST, **5 clients**, **480 rounds**, K=5, lr 0.05, batch 64, drift every 20 rounds (24
+measurements), loss every 40. H swept over {0.00, 0.05, ..., 0.65} plus 0.69 and 0.698 —
+16 jobs, 3 seeds each.
+
+480 rounds rather than 240 holds the gradient budget fixed at 12.8 epochs: a round is
+`clients x K x batch` samples, so halving the clients doubles the rounds needed. The two
+sweeps are therefore comparable point-for-point on the H interval they share, [0, 0.65].
+
+**Running.**
+
+    condor_submit jobs/drift_mnist_n5_sweep.sub          # 16 jobs
+    CLIENTS=5 jobs/drift_mnist_one.sh 0.698              # single cell, locally
+
+**Results.** `runs/mnist/drift_small_cnn_n5/targeth<H>_s<seed>.csv`, same columns as
+experiment 1.
+
+**Plot.** `python plots/drift_vs_heterogeneity.py runs/mnist/drift_small_cnn_n5`
+-> `plots/drift_vs_heterogeneity_mnist_drift_small_cnn_n5.png`.
+
+### Results
+
+_Pending — submitted 2026-09-02 on SaarlandHPC, condor cluster **185325**, 16 jobs x 3 seeds._
