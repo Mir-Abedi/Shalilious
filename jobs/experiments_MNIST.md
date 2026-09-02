@@ -195,7 +195,7 @@ heterogeneity level, and the centralized reference dotted on every panel. Log y-
 
 _Pending._
 
-## 3. Does the H=1.0 turnover survive when clients outnumber their classes?
+## 4. Does the H=1.0 turnover survive when clients outnumber their classes?
 
 > **Cancelled and superseded, 2026-09-02.** Cluster 185325 was killed before completion.
 > The turnover this was designed to explain was in `drift/||g||`, which is no longer
@@ -245,3 +245,62 @@ experiment 1.
 ### Results
 
 _Pending — submitted 2026-09-02 on SaarlandHPC, condor cluster **185325**, 16 jobs x 3 seeds._
+
+## 3. Trust-region Local SGD: bounding how far clients travel  (MNIST port)
+
+**Idea.** K bounds how *long* clients run between syncs; it does not bound how *far* they
+go. Bound the distance directly. Each round the server sets
+
+    R_t = rho * ||g_t|| * eta * K
+
+and confines every client's local iterates to the ball B(w_t, R_t). A tentative step
+u = w - eta*g that leaves the ball is projected onto its surface, after which that client
+stops for the round. rho -> 0 is one-shot averaging, rho = infinity is ordinary Local SGD.
+See experiment 3 in [experiments_CIFAR100.md](experiments_CIFAR100.md) for the full
+derivation and for how ||g_t|| is estimated (an unbiased 2048-sample minibatch gradient at
+w_t, costing 1/K of a round's training work).
+
+**Configuration.** `small_cnn`, full MNIST, **10 clients**, lr 0.05, batch 64, equal
+gradient budget of **20 epochs** = 1.2e6 sample-gradients. Swept over
+rho in {0.5, 1, 2, 4, 8, inf}, K in {1, 5, 10, 20, 40, 70, 100, 150}, and H_label in
+{1.0, 0.75}, 3 seeds each -- 288 runs in 48 jobs, one per (rho, K).
+
+    K          1     5    10    20    40    70   100   150
+    rounds  1875   375   188    94    47    27    19    12
+
+rho starts at 0.5 rather than CIFAR-100's 0.25: the smoke run there found every client
+hitting the ball by local step ~2 at rho=1, so the informative range sits higher. rho=8 is
+added at the top for the same reason. H uses CIFAR-100's {1.0, 0.75} so the two datasets
+compare directly, and the K grid extends to 150 to line up with experiment 2.
+
+rho=infinity is implemented as radius=None, which delegates to the ordinary
+`Client.local_steps`, so the control arm is the same code path rather than a second
+implementation that could drift from it.
+
+**The budget is an upper bound, not an equality.** A client that hits the ball stops for
+the round, so tight rho spends FEWER gradients than the nominal 1.2e6 -- a smoke run at
+rho=2, K=5 logged 1280 sample-gradients in its first round against a nominal 3200. This is
+by design, and it is why the plots use gradient computations rather than rounds as the
+x-axis: at equal rounds the tight-rho arms would be being compared at less compute.
+
+**Running.**
+
+    condor_submit jobs/ball_mnist_sweep.sub     # cluster, 48 parallel jobs
+    jobs/ball_mnist_one.sh <rho> <K>            # one cell, locally
+
+This exceeds the 40-job convention in CLAUDE.md, with permission: the scheduler decides how
+many run concurrently anyway.
+
+**Results.** One CSV per run in `runs/mnist/ball/`, named
+`K<K>_rho<rho>_h<H>_s<seed>.csv`, with `radius`, `ball_hits`, `mean_hit_step`,
+`cos_client`, `cos_agg` alongside the usual columns.
+
+**Plots.** `python plots/ball_sweep.py runs/mnist/ball` -> `plots/ball_loss_mnist_ball.png`
+(loss, rows = heterogeneity, cols = K, one curve per rho) and
+`plots/ball_diagnostics_mnist_ball.png` (how often the ball bound, and whether clients
+still descended). The script draws only the K and rho values the sweep actually produced,
+so it serves both datasets' grids.
+
+### Results
+
+_Pending._

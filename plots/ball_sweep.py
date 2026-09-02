@@ -10,6 +10,7 @@ loose), with the rho=inf control in grey -- it is a different thing, not a furth
 import csv
 import glob
 import os
+import sys
 import re
 from collections import defaultdict
 
@@ -19,13 +20,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-BALL = os.path.join(ROOT, "runs", "ball")
 
-KS = [1, 5, 10, 20, 50]
-RHOS = ["0.25", "0.5", "1", "2", "4", "inf"]
+# The two sweeps differ in grid: CIFAR-100 ran K<=50 and rho from 0.25, MNIST runs K to 150
+# and rho from 0.5. Cells with no CSVs are simply skipped, so one union grid serves both.
+KS = [1, 5, 10, 20, 40, 50, 70, 100, 150]
+RHOS = ["0.25", "0.5", "1", "2", "4", "8", "inf"]
 # sequential blue ramp for the ordered rho, grey for the no-ball control
-RAMP = {"0.25": "#bcd9f5", "0.5": "#8dbdec", "1": "#5b9de2", "2": "#2a78d6", "4": "#1b52a0",
-        "inf": "#8a8983"}
+RAMP = {"0.25": "#cfe3f8", "0.5": "#a9cdf1", "1": "#7db0e8", "2": "#4a8ddc", "4": "#2364b8",
+        "8": "#143f77", "inf": "#8a8983"}
 HS = ["1.0", "0.75"]
 INK, INK2, SURFACE = "#0b0b0b", "#52514e", "#fcfcfb"
 
@@ -58,12 +60,13 @@ def style(ax, xlab, ylab, title):
         ax.spines[s].set_color("#d5d4cf")
 
 
-def figure_loss(data):
-    fig, axes = plt.subplots(2, 5, figsize=(17, 7), sharex=True, sharey=True, facecolor=SURFACE)
+def figure_loss(data, ks, rhos):
+    fig, axes = plt.subplots(2, len(ks), figsize=(3.4 * len(ks), 7), sharex=True,
+                             sharey=True, squeeze=False, facecolor=SURFACE)
     for row, h in enumerate(HS):
-        for col, k in enumerate(KS):
+        for col, k in enumerate(ks):
             ax = axes[row, col]
-            for rho in RHOS:
+            for rho in rhos:
                 d = data.get((k, rho, h), {})
                 if "train_loss" in d:
                     xs, ys = d["train_loss"]
@@ -80,21 +83,25 @@ def figure_loss(data):
     fig.suptitle("Confining local steps to a ball of radius "
                  r"$R_t=\rho\,\|g_t\|\,\eta K$", fontsize=13, color=INK, y=0.985)
     fig.tight_layout(rect=[0, 0.06, 1, 0.955])
-    out = os.path.join(ROOT, "plots", "ball_loss.png")
+    out = os.path.join(ROOT, "plots", f"ball_loss{TAG}.png")
     fig.savefig(out, dpi=150, facecolor=SURFACE)
     print("wrote", out)
 
 
-def figure_diagnostics(data):
-    fig, axes = plt.subplots(2, 2, figsize=(12, 7.5), facecolor=SURFACE)
+def figure_diagnostics(data, ks, rhos):
+    # The client count is whatever this sweep ran; read it off a ball_hits series rather
+    # than hardcoding the 20 the CIFAR-100 sweep used.
+    n_clients = max((max(v["ball_hits"][1]) for v in data.values()
+                     if "ball_hits" in v and v["ball_hits"][1]), default=0)
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7.5), squeeze=False, facecolor=SURFACE)
     for row, h in enumerate(HS):
         for col, (metric, ylab) in enumerate(
-                [("ball_hits", "clients hitting the ball (of 20)"),
+                [("ball_hits", f"clients hitting the ball (of {n_clients})"),
                  ("cos_client", r"$\cos(\Delta_i,\,-g_t)$")]):
             ax = axes[row, col]
-            for rho in RHOS:
+            for rho in rhos:
                 xs, ys = [], []
-                for k in KS:
+                for k in ks:
                     d = data.get((k, rho, h), {})
                     if metric in d and d[metric][1]:
                         xs.append(k)
@@ -114,19 +121,28 @@ def figure_diagnostics(data):
     fig.suptitle("How often the ball binds, and whether clients still descend",
                  fontsize=13, color=INK, y=0.985)
     fig.tight_layout(rect=[0, 0.06, 1, 0.955])
-    out = os.path.join(ROOT, "plots", "ball_diagnostics.png")
+    out = os.path.join(ROOT, "plots", f"ball_diagnostics{TAG}.png")
     fig.savefig(out, dpi=150, facecolor=SURFACE)
     print("wrote", out)
 
 
 def main():
+    global BALL, TAG
+    BALL = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "runs", "ball")
     if not os.path.isdir(BALL):
-        raise SystemExit(f"no {BALL}/ -- run jobs/ball_sweep.sub first")
+        raise SystemExit(f"no {BALL}/ -- run the sweep first")
+    # Figures are named after the run dir so a second dataset does not overwrite the first.
+    rel = os.path.relpath(os.path.normpath(BALL), os.path.join(ROOT, "runs"))
+    TAG = "" if rel == "ball" else "_" + rel.replace(os.sep, "_")
     data = {(k, r, h): load(k, r, h) for k in KS for r in RHOS for h in HS}
-    if not any(data.values()):
+    data = {key: v for key, v in data.items() if v}
+    if not data:
         raise SystemExit(f"no CSVs in {BALL}/")
-    figure_loss(data)
-    figure_diagnostics(data)
+    # Only draw the K and rho values this sweep actually produced.
+    present_k = sorted({k for k, _, _ in data}, key=KS.index)
+    present_r = sorted({r for _, r, _ in data}, key=RHOS.index)
+    figure_loss(data, present_k, present_r)
+    figure_diagnostics(data, present_k, present_r)
 
 
 if __name__ == "__main__":

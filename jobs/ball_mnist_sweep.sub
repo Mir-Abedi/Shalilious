@@ -1,0 +1,22 @@
+# MNIST trust-region Local SGD -- 48 jobs (6 rho x 8 K), each running both heterogeneity
+# levels x 3 seeds = 288 runs.  condor_submit jobs/ball_mnist_sweep.sub
+# See jobs/experiments_MNIST.md.
+
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+
+executable              = jobs/ball_mnist_one.sh
+arguments               = $(rho) $(k)
+initialdir              = $ENV(PWD)
+
+request_cpus            = 2
+request_gpus            = 1
+request_memory          = 8GB
+
+log                     = jobs/logs/ball_mnist.log
+output                  = jobs/logs/ball_mnist_rho$(rho)_K$(k).out
+error                   = jobs/logs/ball_mnist_rho$(rho)_K$(k).err
+
+should_transfer_files   = NO
+
+queue rho, k from jobs/ball_mnist_params.txt
