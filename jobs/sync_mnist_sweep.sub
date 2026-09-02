@@ -1,0 +1,24 @@
+# MNIST train loss vs. synchronization interval -- 24 jobs (8 K x 3 heterogeneity levels),
+# three seeds inside each. Submit the per-panel ceilings separately (8 more jobs, 32 total):
+#   condor_submit jobs/sync_mnist_sweep.sub
+#   condor_submit jobs/sgd_mnist_matched.sub
+# See jobs/experiments_MNIST.md.
+
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+
+executable              = jobs/sync_mnist_one.sh
+arguments               = $(k) $(h)
+initialdir              = $ENV(PWD)
+
+request_cpus            = 2
+request_gpus            = 1
+request_memory          = 8GB
+
+log                     = jobs/logs/sync_mnist.log
+output                  = jobs/logs/sync_mnist_K$(k)_h$(h).out
+error                   = jobs/logs/sync_mnist_K$(k)_h$(h).err
+
+should_transfer_files   = NO
+
+queue k, h from jobs/sync_mnist_params.txt

@@ -116,3 +116,51 @@ anywhere in either dataset. This is the denominator moving, not the drift: at H=
 is much further from convergence (loss 0.151 vs 0.125 at H=0.95) so ||g|| is
 correspondingly larger. Absolute drift, the panel that matches the theory's
 gradient-dissimilarity constant, keeps rising.
+
+## 2. Train loss vs. synchronization interval  (MNIST port)
+
+**Claim.** Given a fixed communication budget, more local work per round helps up to a
+point, and heterogeneity decides where that point is.
+
+**How this differs from CIFAR-100 experiment 2.** The CIFAR-100 version holds the
+*gradient* budget fixed (100 epochs in every cell) and lets rounds shrink as K grows, so
+the only variable is how often clients sync. Here **rounds are fixed at 100** and the
+gradient budget grows with K instead:
+
+    K            1      5     10     20     40     70    100    150
+    rounds     100    100    100    100    100    100    100    100
+    grads      64k   320k   640k   1.3M   2.6M   4.5M   6.4M   9.6M
+    epochs     1.1    5.3   10.7   21.3   42.7   74.7  106.7  160.0
+
+So the two experiments answer different questions. CIFAR-100 asks *what does syncing less
+cost at equal compute*; this asks *what does more local work buy at equal communication*.
+The K=1 arm here is deliberately undertrained (~1 epoch) — that is the honest answer to
+"one round of communication per step buys you very little", not a defect.
+
+**Per-panel centralized ceiling.** Because the panels no longer share a budget, the single
+reference curve the CIFAR-100 version uses does not apply. Each K instead gets its own
+centralized control at matched compute: `100*K` updates of batch 640, which is the same
+`64000*K` sample-gradients the panel spends, at the distributed arm's effective batch
+(10 clients x 64). It is the ceiling that compute could have reached with no
+synchronization at all. `jobs/sgd_mnist_matched.sh`.
+
+At K=1 that control is an identity check rather than a reference: one local step plus
+shard-size-weighted averaging IS batch-640 SGD, so it must land on the K=1 curves. Batch
+640 rather than 64 on purpose — CIFAR-100 experiment 2 established that a batch-64
+reference measures a batch-size effect, not a cost of distribution.
+
+**Configuration.** `small_cnn`, full MNIST, 10 clients, lr 0.05, batch 64, 100 rounds,
+`H_label` in {0.0, 0.5, 1.0} via `by_target_h`, loss every 2 rounds, 3 seeds — 24 jobs
+plus 8 ceilings, 32 total.
+
+**Running.**
+
+    condor_submit jobs/sync_mnist_sweep.sub      # cluster, 24 jobs
+    condor_submit jobs/sgd_mnist_matched.sub     # the 8 per-panel ceilings
+
+**Results.** CSVs in `runs/mnist/sync/`, named `K<K>_h<H>_s<seed>.csv` and
+`centralK<K>_s<seed>.csv`.
+
+### Results
+
+_Pending._

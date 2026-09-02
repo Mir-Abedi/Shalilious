@@ -1,0 +1,14 @@
+# Per-panel centralized ceilings for the MNIST sync sweep -- one job per K, 3 seeds each.
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+executable              = jobs/sgd_mnist_matched.sh
+arguments               = $(k)
+initialdir              = $ENV(PWD)
+request_cpus            = 2
+request_gpus            = 1
+request_memory          = 8GB
+log                     = jobs/logs/sync_mnist.log
+output                  = jobs/logs/sgd_mnist_matched_K$(k).out
+error                   = jobs/logs/sgd_mnist_matched_K$(k).err
+should_transfer_files   = NO
+queue k in (1 5 10 20 40 70 100 150)
