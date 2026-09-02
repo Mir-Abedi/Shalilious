@@ -39,11 +39,14 @@ def read_run(path):
 
 def main():
     # A run dir per dataset keeps CIFAR-100 and MNIST curves out of each other's plot.
-    run_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "runs")
+    argv = [a for a in sys.argv[1:] if a != "bare"]
+    bare = "bare" in sys.argv[1:]   # panels only: no suptitle, caption or panel titles
+    run_dir = argv[0] if argv else os.path.join(ROOT, "runs")
     # Name the figure after the run dir so a second dataset does not overwrite the first.
     tag = os.path.relpath(os.path.normpath(run_dir), os.path.join(ROOT, "runs"))
     out = os.path.join(ROOT, "plots", "drift_vs_heterogeneity"
-                       + ("" if tag == "." else "_" + tag.replace(os.sep, "_")) + ".png")
+                       + ("" if tag == "." else "_" + tag.replace(os.sep, "_"))
+                       + ("_bare" if bare else "") + ".png")
     runs = [r for r in (read_run(f) for f in glob.glob(os.path.join(run_dir, "*.csv"))) if r]
     if not runs:
         raise SystemExit(f"no {run_dir}/*.csv contained drift measurements -- run with --drift-every N")
@@ -89,7 +92,8 @@ def main():
         ax.set_facecolor(SURFACE)
         ax.set_xlabel(r"$H_{\mathrm{label}} = I(C;Y)/H(Y)$", fontsize=10, color=INK)
         ax.set_ylabel(ylab, fontsize=10, color=INK)
-        ax.set_title(title, fontsize=11, color=INK, pad=8)
+        if not bare:
+            ax.set_title(title, fontsize=11, color=INK, pad=8)
         ax.grid(alpha=0.25, linewidth=0.6)
         ax.tick_params(colors=INK2, labelsize=9)
         for s in ("top", "right"):
@@ -97,12 +101,16 @@ def main():
         for s in ("left", "bottom"):
             ax.spines[s].set_color("#d5d4cf")
 
-    fig.suptitle("Client drift grows with label heterogeneity", fontsize=13, color=INK, y=0.99)
-    fig.text(0.5, 0.005,
-             f"{label}, {rounds} rounds x {per_round} sample-gradients per round, "
-             f"{n_seeds} seeds per point (error bars +-1 sd)",
-             ha="center", fontsize=9, color=INK2)
-    fig.tight_layout(rect=[0, 0.045, 1, 0.95])
+    if bare:
+        fig.tight_layout()
+    else:
+        fig.suptitle("Client drift grows with label heterogeneity", fontsize=13, color=INK,
+                     y=0.99)
+        fig.text(0.5, 0.005,
+                 f"{label}, {rounds} rounds x {per_round} sample-gradients per round, "
+                 f"{n_seeds} seeds per point (error bars +-1 sd)",
+                 ha="center", fontsize=9, color=INK2)
+        fig.tight_layout(rect=[0, 0.045, 1, 0.95])
     fig.savefig(out, dpi=160, facecolor=SURFACE)
     print(f"wrote {out}  ({len(runs)} runs, {len(xs)} H values, {n_seeds} seeds each)")
 
