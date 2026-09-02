@@ -66,12 +66,15 @@ def main():
         sd = [st.stdev([v[i] for v in by_h[x]]) if len(by_h[x]) > 1 else 0.0 for x in xs]
         return mean, sd
 
+    # Absolute drift only. The relative measure ||g_i - g|| / ||g|| was dropped: its
+    # denominator shrinks as a run converges, so at H = 1.0 -- where the run ends furthest
+    # from convergence -- it turns over and reads as a fall in drift when drift is still
+    # rising. Absolute drift is also what the convergence bounds' dissimilarity constant is.
     panels = [
         (r"mean $\|g_i - g\|$", "client-gradient drift", BLUE, 0),
-        (r"mean $\|g_i - g\|\,/\,\|g\|$", "drift relative to the global gradient", BLUE, 1),
         ("final training loss", "what the drift costs", ORANGE, 2),
     ]
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.4), facecolor=SURFACE)
+    fig, axes = plt.subplots(1, 2, figsize=(9.5, 4.4), facecolor=SURFACE)
     for ax, (ylab, title, color, idx) in zip(axes, panels):
         mean, sd = stats(idx)
         ax.errorbar(xs, mean, yerr=sd, color=color, linewidth=2, marker="o",
@@ -99,7 +102,7 @@ def main():
              f"{label}, {rounds} rounds x {per_round} sample-gradients per round, "
              f"{n_seeds} seeds per point (error bars +-1 sd)",
              ha="center", fontsize=9, color=INK2)
-    fig.tight_layout(rect=[0, 0.035, 1, 0.96])
+    fig.tight_layout(rect=[0, 0.045, 1, 0.95])
     fig.savefig(out, dpi=160, facecolor=SURFACE)
     print(f"wrote {out}  ({len(runs)} runs, {len(xs)} H values, {n_seeds} seeds each)")
 

@@ -75,8 +75,10 @@ Gradient evaluations made for drift measurement are deliberately NOT counted in
 
 ![drift vs heterogeneity, CIFAR-100](../plots/drift_vs_heterogeneity.png)
 
-Three panels: absolute drift, drift relative to ||g|| (which controls for gradients
-shrinking as training converges), and the final training loss that the drift costs.
+Two panels: absolute drift, and the final training loss that the drift costs. The relative
+measure `drift/|g|` is logged (via `grad_norm`) but no longer plotted -- its denominator
+shrinks as a run converges, which on MNIST makes it turn over at H=1.0 and read as falling
+drift while drift is still rising.
 
 ### Results
 

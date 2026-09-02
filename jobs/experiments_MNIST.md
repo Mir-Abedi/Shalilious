@@ -56,9 +56,8 @@ are empty on rows logged but not measured. Drift-measurement gradients are not c
 
 **Plot.** `python plots/drift_vs_heterogeneity.py runs/mnist/drift_small_cnn_n10`
 -> `plots/drift_vs_heterogeneity_mnist_drift_small_cnn_n10.png`. The figure is named after the run
-dir; pass the dir explicitly, or it plots the CIFAR-100 runs. Three panels: absolute drift,
-drift relative to ||g|| (which controls for gradients shrinking as training converges), and
-the final training loss the drift costs.
+dir; pass the dir explicitly, or it plots the CIFAR-100 runs. Two panels: absolute drift,
+and the final training loss the drift costs.
 
 ![drift vs heterogeneity, MNIST](../plots/drift_vs_heterogeneity_mnist_drift_small_cnn_n10.png)
 
