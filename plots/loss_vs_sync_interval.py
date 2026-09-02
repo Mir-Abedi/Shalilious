@@ -27,11 +27,25 @@ INK, INK2, SURFACE, REF = "#0b0b0b", "#52514e", "#fcfcfb", "#8a8983"
 
 
 def curve(paths):
-    """Mean loss across seeds at each logged point: ([grads], [loss])."""
-    acc = defaultdict(list)
+    """Mean loss across seeds at each logged point: ([grads], [loss]).
+
+    Runs that stopped early are dropped rather than averaged in: a seed still in
+    progress carries a mid-run loss that would silently drag the tail of the mean.
+    """
+    runs = []
     for p in paths:
-        for r in csv.DictReader(open(p)):
-            acc[int(r["grad_computations"])].append(float(r["train_loss"]))
+        rows = [(int(r["grad_computations"]), float(r["train_loss"]))
+                for r in csv.DictReader(open(p))]
+        if rows:
+            runs.append(rows)
+    if not runs:
+        return [], []
+    reach = max(r[-1][0] for r in runs)
+    runs = [r for r in runs if r[-1][0] >= 0.9 * reach]
+    acc = defaultdict(list)
+    for r in runs:
+        for g, l in r:
+            acc[g].append(l)
     xs = sorted(acc)
     return xs, [sum(acc[x]) / len(acc[x]) for x in xs]
 
@@ -40,6 +54,7 @@ def main():
     if not os.path.isdir(SYNC):
         raise SystemExit(f"no {SYNC}/ -- run jobs/sync_sweep.sub first")
     ref = curve(glob.glob(os.path.join(SYNC, "central_s*.csv")))
+    matched = curve(glob.glob(os.path.join(SYNC, "matched_s*.csv")))
 
     fig, axes = plt.subplots(2, 4, figsize=(16, 7.5), sharex=True, sharey=True,
                              facecolor=SURFACE)
@@ -52,9 +67,13 @@ def main():
             xs, ys = curve(paths)
             ax.plot(xs, ys, color=HCOLOR[h], linewidth=2, label=HLABEL[h], zorder=3)
             seen += 1
+        if matched[0]:
+            # the like-for-like control: batch 1280 is exactly K=1's effective batch
+            ax.plot(matched[0], matched[1], color="#4a3aa7", linewidth=1.8, linestyle=":",
+                    label="centralized SGD, batch 1280", zorder=4)
         if ref[0]:
             ax.plot(ref[0], ref[1], color=REF, linewidth=1.6, linestyle="--",
-                    label="centralized SGD", zorder=2)
+                    label="centralized SGD, batch 64", zorder=2)
         ax.set_yscale("log")   # centralized SGD reaches 5e-4; linear would flatten it
         ax.set_title(f"K = {k}", fontsize=11, color=INK, pad=6)
         ax.set_facecolor(SURFACE)
@@ -73,14 +92,16 @@ def main():
         ax.set_ylabel("training loss", fontsize=10, color=INK)
 
     handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False,
-               fontsize=10, bbox_to_anchor=(0.5, 0.005))
+    fig.legend(handles, labels, loc="lower center", ncol=5, frameon=False,
+               fontsize=9.5, bbox_to_anchor=(0.5, 0.045))
     fig.suptitle("Longer synchronization intervals stall convergence, and heterogeneity "
                  "makes it worse", fontsize=13, color=INK, y=0.985)
-    fig.text(0.5, 0.055, "CIFAR-100, small_cnn, 20 clients x 2500 samples each, equal "
-             "gradient budget of 100 epochs per panel, 3 seeds, lr 0.05, batch 64",
-             ha="center", fontsize=9, color=INK2)
-    fig.tight_layout(rect=[0, 0.085, 1, 0.955])
+    fig.text(0.5, 0.008, "CIFAR-100, small_cnn, 20 clients x 2500 samples each, equal "
+             "gradient budget of 100 epochs per panel, 3 seeds, lr 0.05, client batch 64. "
+             "K=1 with 20 clients has effective batch 1280, so the batch-1280 line is its "
+             "like-for-like control.",
+             ha="center", fontsize=8.5, color=INK2)
+    fig.tight_layout(rect=[0, 0.10, 1, 0.955])
     fig.savefig(OUT, dpi=150, facecolor=SURFACE)
     print(f"wrote {OUT}")
 

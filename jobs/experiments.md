@@ -184,16 +184,29 @@ Final training loss after 100 epochs (mean of 3 seeds +- sd):
 - **Under heterogeneity the loss never stops degrading with K** (2.54 -> 3.37 from K=5 to
   150, still climbing). On homogeneous data it plateaus around 1.4-1.5 past K=40. So
   there is a usable ceiling on local work when data is IID, and none when it is skewed.
-- **The distributed-vs-centralized gap dwarfs all of it.** Plain batch-64 SGD reaches
-  5e-4 while the best distributed arm reaches 0.71 -- three orders of magnitude, at an
-  identical gradient budget. The cause is parameter updates, not gradients: centralized
-  SGD takes 78,125 steps of batch 64, while K=1 Local SGD takes 3,906 steps of effective
-  batch 1280. Averaging 20 clients buys a less noisy gradient and pays 20x fewer updates,
-  and at this budget that trade is heavily negative.
+- **The huge gap to batch-64 SGD is a batch-size effect, not a cost of distribution.**
+  Plain batch-64 SGD reaches 5e-4 against 0.71 for the best distributed arm, but that
+  comparison is not like-for-like: K=1 over 20 clients at batch 64 has an EFFECTIVE batch
+  of 1280, so the batch-64 reference answers "what does small-batch SGD do on the same
+  sample budget", where it gets 78,125 parameter updates against 3,906. The difference is
+  updates, not distribution.
+
+  The like-for-like control is centralized SGD at batch 1280 (`jobs/sgd_matched.sh`), and
+  it lands where K=1 does -- ['0.8276', '0.6157'] (mean 0.7217) against 0.85 / 0.76 / 0.71 for K=1 at
+  H = 0.0 / 0.5 / 1.0. All within seed noise, as they must be: K=1 Local SGD IS batch-1280
+  SGD. Compared at equal parameter updates the two are also indistinguishable, and both
+  beat batch-64 SGD per update (0.85 vs 2.25 at 3,906 updates) -- large batches make better
+  progress per step and simply run out of budget sooner.
+
+  So the genuine cost of distribution in this experiment appears only at K >= 5. At K = 1
+  there is none.
 
 **Plot.** `python plots/loss_vs_sync_interval.py` -> `plots/loss_vs_sync_interval.png`.
-One panel per K, one curve per heterogeneity level, centralized SGD dashed on every panel.
-Log y-axis: the reference reaches 5e-4 and a linear axis flattens it onto the baseline.
+One panel per K, one curve per heterogeneity level, and both centralized references on
+every panel: batch 1280 dotted (the like-for-like control, which sits underneath the K=1
+curves and separates from K=5 on) and batch 64 dashed. Log y-axis: batch-64 SGD reaches
+5e-4 and a linear axis flattens it onto the baseline. Runs that stopped early are dropped
+from the means rather than averaged in, so a seed still in progress cannot drag a tail.
 
 
 ## 3. Trust-region Local SGD: bounding how far clients travel
