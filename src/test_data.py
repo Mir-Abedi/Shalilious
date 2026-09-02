@@ -209,6 +209,82 @@ def test_drift_is_positive_for_disagreeing_clients():
     assert drift > 1e-3, f"disagreeing clients showed no drift: {drift}"
 
 
+def _ball_fixture(seed=0, n=8):
+    import torch
+
+    from models import small_cnn
+    from projected import ProjectedClient
+
+    torch.manual_seed(seed)
+    xs = torch.randn(n, 3, 32, 32)
+    ys = torch.randint(0, 100, (n,))
+    ds = list(zip(xs, ys))
+    c = ProjectedClient(ds, list(range(n)), small_cnn, n, 0.5, "cpu")
+    return c, {k: v.detach().clone() for k, v in small_cnn().state_dict().items()}
+
+
+def test_projection_lands_exactly_on_the_sphere():
+    """An overshooting step must land ON the ball, and the client must then freeze."""
+    import torch
+    from torch.nn.utils import parameters_to_vector
+
+    c, state = _ball_fixture()
+    R = 1e-4  # far smaller than one lr=0.5 step travels, so step 1 overshoots
+    out, grads = c.local_steps(state, 10, radius=R)
+
+    center = parameters_to_vector([v for k, v in state.items()]).detach()
+    end = torch.cat([out[k].reshape(-1) for k in state])
+    dist = (end - center).norm().item()
+    # relative tolerance: the norm accumulates float32 error over 1.1M elements,
+    # so exactness here means ~1e-4 relative, not machine-epsilon absolute
+    assert abs(dist - R) < 1e-3 * R, f"landed at {dist}, not on the sphere at {R}"
+    assert c.hit_step == 1, f"expected to hit on step 1, got {c.hit_step}"
+    assert grads == 8, f"frozen after the hit should mean one batch of grads, got {grads}"
+
+
+def test_large_radius_never_binds():
+    """A ball far larger than the trajectory must leave every step untouched."""
+    c, state = _ball_fixture()
+    out, grads = c.local_steps(state, 5, radius=1e6)
+    assert c.hit_step is None, c.hit_step
+    assert grads == 40, grads
+
+
+def test_rho_infinity_matches_plain_local_sgd():
+    """radius=None must reproduce plain Local SGD exactly -- the control arm is the
+    same code path, not a second implementation."""
+    import torch
+
+    from client import Client
+    from models import small_cnn
+
+    torch.manual_seed(0)
+    xs = torch.randn(8, 3, 32, 32)
+    ys = torch.randint(0, 100, (8,))
+    ds = list(zip(xs, ys))          # whole shard is one batch, so order cannot differ
+    state = {k: v.detach().clone() for k, v in small_cnn().state_dict().items()}
+
+    from projected import ProjectedClient
+
+    # Both clients shuffle their loader off the global RNG, so seed identically at each
+    # construction and each call -- otherwise the batch ORDER differs and the float
+    # summation order alone makes the states unequal.
+    torch.manual_seed(7)
+    a = Client(ds, list(range(8)), small_cnn, 8, 0.1, "cpu")
+    torch.manual_seed(7)
+    b = ProjectedClient(ds, list(range(8)), small_cnn, 8, 0.1, "cpu")
+
+    torch.manual_seed(11)
+    plain, gp = a.local_steps(state, 3)
+    torch.manual_seed(11)
+    proj, gq = b.local_steps(state, 3, radius=None)
+
+    assert gp == gq == 24, (gp, gq)
+    for k in plain:
+        assert torch.equal(plain[k], proj[k]), f"{k} differs from plain Local SGD"
+    assert b.hit_step is None
+
+
 if __name__ == "__main__":
     test_partitions_are_disjoint_covers()
     test_low_alpha_concentrates_superclasses()
@@ -219,6 +295,9 @@ if __name__ == "__main__":
     test_by_target_h_hits_its_target()
     test_drift_is_zero_for_identical_clients()
     test_drift_is_positive_for_disagreeing_clients()
+    test_projection_lands_exactly_on_the_sphere()
+    test_large_radius_never_binds()
+    test_rho_infinity_matches_plain_local_sgd()
     test_aggregate_is_a_weighted_mean()
     test_one_local_step_matches_plain_sgd()
     print("ok")

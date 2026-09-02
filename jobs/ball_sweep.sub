@@ -1,0 +1,23 @@
+# Trust-region Local SGD -- 30 jobs (6 rho values x 5 sync intervals), each running
+# both heterogeneity levels (H=1.0, 0.75) x 3 seeds.
+#   condor_submit jobs/ball_sweep.sub
+# See jobs/experiments.md.
+
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+
+executable              = jobs/ball_one.sh
+arguments               = $(rho) $(k)
+initialdir              = $ENV(PWD)
+
+request_cpus            = 2
+request_gpus            = 1
+request_memory          = 8GB
+
+log                     = jobs/logs/ball.log
+output                  = jobs/logs/ball_rho$(rho)_K$(k).out
+error                   = jobs/logs/ball_rho$(rho)_K$(k).err
+
+should_transfer_files   = NO
+
+queue rho, k from jobs/ball_params.txt

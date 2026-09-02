@@ -126,3 +126,58 @@ A pilot on synthetic data had suggested absolute drift might turn over near H = 
 the relative measure kept rising. That did not reproduce on CIFAR-100 -- both measures are
 monotone to H = 1. The `grad_norm` column stays worth logging, but the concern it was
 guarding against did not materialise.
+
+## 3. Trust-region Local SGD: bounding how far clients travel
+
+**Idea.** K bounds how *long* clients run between syncs; it does not bound how *far* they
+go. Bound the distance directly. Each round the server sets
+
+    R_t = rho * ||g_t|| * eta * K
+
+and confines every client's local iterates to the ball B(w_t, R_t). A tentative step
+u = w - eta*g that leaves the ball is projected onto its surface,
+
+    w <- w_t + min(1, R_t / ||u - w_t||) * (u - w_t)
+
+after which that client stops for the round. rho is the free parameter: rho -> 0 is
+one-shot averaging, rho = infinity is ordinary Local SGD.
+
+**Estimating ||g_t||.** The exact global gradient costs a full pass over the training set
+every round -- roughly 40x the whole training budget at K=1 -- so the radius is scaled by
+an unbiased 2048-sample minibatch gradient taken at w_t before the clients are dispatched.
+Overhead is 1/K of a round's training work (100% at K=1, 2% at K=50). The radius only
+needs the scale of ||g_t||, and rho sweeps a 16x range around it.
+
+**Logged per round.** `ball_hits` (how many of the 20 clients hit the ball),
+`mean_hit_step` (the local step at which they hit), `cos_client` (mean over clients of
+cos(w_i,K - w_t, -g_t)), `cos_agg` (the same for the aggregated update), `radius`, and
+`train_loss`. The cosines use the same 2048-sample estimate; `cos_client_exact` recomputes
+against the true full-batch gradient on every 10th logged round as a check.
+
+**Configuration.** small_cnn, full CIFAR-100, 20 clients x 2500 samples each, lr 0.05,
+batch 64, equal gradient budget of 100 epochs -- the same budget as experiment 2, so the
+rho=infinity column is directly comparable to those results and acts as the control.
+Swept over rho in {0.25, 0.5, 1, 2, 4, inf}, K in {1, 5, 10, 20, 50}, and H_label in
+{1.0 (fully heterogeneous), 0.75 (almost)}, 3 seeds each -- 180 runs packed into 30 jobs,
+one per (rho, K).
+
+rho=infinity is implemented as radius=None, which delegates to the ordinary
+`Client.local_steps`, so the control arm is the same code path rather than a second
+implementation that could drift from it.
+
+**Running.**
+
+    condor_submit jobs/ball_sweep.sub     # cluster, 30 parallel jobs
+    jobs/ball_one.sh <rho> <K>            # one cell, locally
+
+**Results.** One CSV per run in `runs/ball/`, named `K<K>_rho<rho>_h<H>_s<seed>.csv`.
+
+**Plots.** `python plots/ball_sweep.py` -> `plots/ball_loss.png` (loss, rows =
+heterogeneity, cols = K, one curve per rho) and `plots/ball_diagnostics.png` (how often
+the ball bound, and whether clients still descended).
+
+**Early note from the smoke run.** On a reduced-data smoke, every client hit the ball by
+local step ~2 of 10 at rho=1 and at step 1 at rho=0.25. Under heterogeneity a client's own
+mini-batch gradient is much larger than the global ||g_t|| that sizes the ball, so the
+tight rho values may collapse onto K=1 behaviour and the contrast may sit between rho=4
+and rho=infinity.

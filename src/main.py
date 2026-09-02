@@ -11,6 +11,7 @@ from client import Client
 from data import (by_superclass, by_target_h, dirichlet, iid, label_heterogeneity,
                   load_cifar100)
 from models import resnet18, small_cnn
+from projected import ProjectedClient, ProjectedServer
 from server import Server
 
 PARTITIONS = {"iid": iid, "dirichlet": dirichlet, "by_superclass": by_superclass,
@@ -35,6 +36,15 @@ def parse_args():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--data-frac", type=float, default=1.0)
     p.add_argument("--eval-every", type=int, default=1)
+    p.add_argument("--rho", type=float, default=None,
+                   help="trust-region ball: local iterates stay within "
+                        "rho*||g_t||*lr*local_steps of the synced model. "
+                        "Omit (or pass inf) for ordinary Local SGD.")
+    p.add_argument("--grad-batch", type=int, default=2048,
+                   help="minibatch used to estimate ||g_t|| for the ball radius")
+    p.add_argument("--exact-cos-every", type=int, default=0,
+                   help="every Nth logged round, also compute cosine against the exact "
+                        "full-batch gradient (costs one pass over the training set); 0 disables")
     p.add_argument("--drift-every", type=int, default=0,
                    help="measure client-gradient drift every N rounds; 0 disables it. "
                         "Each measurement costs one full pass over the training set.")
@@ -46,6 +56,8 @@ def parse_args():
 def default_out(a):
     part = {"dirichlet": f"dirichlet{a.alpha}", "target_h": f"targeth{a.target_h}"}.get(
         a.partition, a.partition)
+    if a.rho is not None:
+        part += f"_rho{a.rho}"
     return f"runs/{a.model}_{part}_n{a.clients}_K{a.local_steps}_lr{a.lr}_s{a.seed}.csv"
 
 
@@ -68,10 +80,15 @@ def main():
     if not shards:
         raise SystemExit("every shard is empty -- raise --alpha or lower --clients")
 
-    clients = [
-        Client(dataset, s, MODELS[a.model], a.batch_size, a.lr, device) for s in shards
-    ]
-    server = SERVERS[a.server](MODELS[a.model](), clients, dataset, pool, device)
+    # rho=inf is ordinary Local SGD -- the ball is never binding, so take the plain path
+    ball = a.rho is not None and a.rho != float("inf")
+    cls = ProjectedClient if ball else Client
+    clients = [cls(dataset, s, MODELS[a.model], a.batch_size, a.lr, device) for s in shards]
+    if ball:
+        server = ProjectedServer(MODELS[a.model](), clients, dataset, pool, device,
+                                 rho=a.rho, grad_batch=a.grad_batch)
+    else:
+        server = SERVERS[a.server](MODELS[a.model](), clients, dataset, pool, device)
     h_label = label_heterogeneity(coarse, shards)
 
     out = a.out or default_out(a)
@@ -81,18 +98,32 @@ def main():
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
         # h_label is constant per run; carried as a column so a plot needs only the CSVs.
-        w.writerow(["round", "grad_computations", "train_loss", "drift", "grad_norm", "h_label"])
+        BALL_COLS = ["radius", "ball_hits", "mean_hit_step", "cos_client", "cos_agg",
+                     "cos_client_exact"]
+        w.writerow(["round", "grad_computations", "train_loss", "drift", "grad_norm",
+                    "h_label"] + BALL_COLS)
 
-        def log(r, grads, loss, drift=None, gnorm=None):
+        def fmt(v):
+            return "" if v is None else (f"{v:.6g}" if isinstance(v, float) else str(v))
+
+        def log(r, grads, loss, drift=None, gnorm=None, extra=None):
+            extra = extra or {}
             w.writerow([r, grads, f"{loss:.6f}",
                         "" if drift is None else f"{drift:.6e}",
                         "" if gnorm is None else f"{gnorm:.6e}",
-                        f"{h_label:.6f}"])
+                        f"{h_label:.6f}"] + [fmt(extra.get(c)) for c in BALL_COLS])
             f.flush()
-            extra = "" if drift is None else f"  drift {drift:.4e}  |g| {gnorm:.4e}"
-            print(f"round {r:4d}  grads {grads:>10d}  loss {loss:.4f}{extra}", flush=True)
+            tail = "" if drift is None else f"  drift {drift:.4e}  |g| {gnorm:.4e}"
+            if extra:
+                tail += (f"  hits {extra['ball_hits']:>2}"
+                         f"  cos {extra['cos_client']:+.3f}/{extra['cos_agg']:+.3f}")
+            print(f"round {r:4d}  grads {grads:>10d}  loss {loss:.4f}{tail}", flush=True)
 
-        server.run(a.rounds, a.local_steps, a.eval_every, log, a.drift_every)
+        if ball:
+            server.run(a.rounds, a.local_steps, a.eval_every, log, a.drift_every,
+                       a.exact_cos_every)
+        else:
+            server.run(a.rounds, a.local_steps, a.eval_every, log, a.drift_every)
 
 
 if __name__ == "__main__":
