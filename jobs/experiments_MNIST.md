@@ -191,9 +191,60 @@ experiment 1 found drift accelerating sharply between 0.9 and 1.0.
 -> `plots/loss_vs_sync_interval_mnist_sync.png`. One panel per K, one curve per
 heterogeneity level, and the centralized reference dotted on every panel. Log y-axis.
 
+![loss vs sync interval, MNIST](../plots/loss_vs_sync_interval_mnist_sync.png)
+
 ### Results
 
-_Pending._
+Run 2026-09-02 on SaarlandHPC, clusters 185329 (32 jobs) and 185330 (reference), all 99
+runs completed with no failures. Budgets land within 5% of the nominal 6e5 (K=150 spends
+573k: 6 rounds of partial final batches).
+
+Final training loss after 10 epochs (mean of 3 seeds +- sd):
+
+        K      H=0.0             H=0.5             H=0.9             H=1.0
+    ----------------------------------------------------------------------------
+        1   0.0501 +-0.0020   0.0521 +-0.0035   0.0542 +-0.0022   0.0504 +-0.0025
+        5   0.0630 +-0.0182   0.0951 +-0.0319   0.1767 +-0.0720   0.2438 +-0.0828
+       10   0.0527 +-0.0012   0.0802 +-0.0020   0.1893 +-0.0046   0.3747 +-0.0861
+       20   0.0532 +-0.0014   0.1299 +-0.0553   0.2403 +-0.0069   0.8228 +-0.2000
+       40   0.0546 +-0.0007   0.0847 +-0.0013   0.2867 +-0.0189   1.2170 +-0.0891
+       70   0.0554 +-0.0010   0.0871 +-0.0007   0.3098 +-0.0083   1.8162 +-0.4747
+      100   0.0557 +-0.0012   0.0906 +-0.0045   0.3082 +-0.0156   1.9294 +-0.2873
+      150   0.0560 +-0.0011   0.0899 +-0.0003   0.3374 +-0.0242   1.8556 +-0.0082
+
+    centralized SGD (batch 640): 0.0687 +-0.0233
+
+- **At K=1 heterogeneity costs nothing.** 0.0501 / 0.0521 / 0.0542 / 0.0504 across the
+  whole H range are within seed noise of each other and of the batch-640 reference. This
+  is not luck: one local step followed by a shard-size-weighted average IS batch-640 SGD,
+  so the partition cannot matter. It is the identity `test_one_local_step_matches_plain_sgd`
+  asserts, and in the plot all four curves and the reference lie on top of one another in
+  the K=1 panel. It also makes everything at larger K attributable to local drift rather
+  than to the setup.
+- **The interaction is the result, not the main effect.** Going K=1 -> 150 costs almost
+  nothing on homogeneous data and is ruinous on skewed data:
+
+        H=0.0   0.0501 -> 0.0560     1.1x
+        H=0.5   0.0521 -> 0.0899     1.7x
+        H=0.9   0.0542 -> 0.3374     6.2x
+        H=1.0   0.0504 -> 1.8556    36.8x
+
+  The penalty is not linear in H either: 0.5 -> 0.9 multiplies it 3.6x, and 0.9 -> 1.0
+  multiplies it another 6x. This is the same acceleration experiment 1 found in the drift
+  itself between H=0.9 and H=1.0, which is why H=0.9 was added to this grid.
+- **Under full heterogeneity, local SGD stops working entirely past K=40.** At H=1.0 the
+  loss reaches 1.22 at K=40 and 1.82-1.93 from K=70 on, against 2.30 at initialization --
+  so 10 epochs of computation buys about 20% of the way to where K=1 gets in the same
+  budget. The K=70/100/150 panels show the H=1.0 curve nearly flat.
+- **On homogeneous data there is a usable ceiling on local work; under skew there is
+  none.** H=0.0 plateaus at ~0.055 from K=10 onward, so syncing 150x less often is free.
+  H=0.9 and H=1.0 are still degrading at K=150.
+- **The centralized reference sits ON the K=1 curves, not below them** (0.0687 +-0.0233
+  against 0.0501-0.0542), unlike CIFAR-100 where the batch-64 reference was three orders
+  of magnitude below everything. That is the batch-size confound CIFAR-100 experiment 2
+  diagnosed, corrected: compared at its true effective batch, distribution costs nothing
+  at K=1. Its wider seed spread comes from being a single run per seed rather than an
+  average over 10 clients.
 
 ## 3. Trust-region Local SGD: bounding how far clients travel  (MNIST port)
 
