@@ -1,0 +1,13 @@
+# Centralized SGD reference -- one job, three seeds.
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+executable              = jobs/sgd_matched.sh
+initialdir              = $ENV(PWD)
+request_cpus            = 2
+request_gpus            = 1
+request_memory          = 8GB
+log                     = jobs/logs/sync.log
+output                  = jobs/logs/sgd_matched.out
+error                   = jobs/logs/sgd_matched.err
+should_transfer_files   = NO
+queue
