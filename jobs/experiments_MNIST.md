@@ -60,4 +60,4 @@ dir; pass the dir explicitly, or it plots the CIFAR-100 runs.
 
 ### Results
 
-_Pending — submitted 2026-09-02, cluster SaarlandHPC._
+_Pending — submitted 2026-09-02 on SaarlandHPC, condor cluster **185301**, 21 jobs x 3 seeds._
