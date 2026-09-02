@@ -1,0 +1,26 @@
+# Drift vs. label heterogeneity on MNIST with 5 clients -- the control for the H=1.0
+# turnover seen at 10 clients, where each client holds a single digit and its local
+# objective degenerates. At 5 clients every client owns 2 digits, so no local objective is
+# ever single-class; the price is a ceiling of H = 1 - log(2)/log(10) = 0.699.
+# Submit from the repo root:  condor_submit jobs/drift_mnist_n5_sweep.sub
+# See jobs/experiments_MNIST.md experiment 2.
+
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+
+executable              = jobs/drift_mnist_one.sh
+arguments               = $(h)
+environment             = "MODEL=small_cnn CLIENTS=5"
+initialdir              = $ENV(PWD)
+
+request_cpus            = 2
+request_gpus            = 1
+request_memory          = 8GB
+
+log                     = jobs/logs/drift_mnist_n5.log
+output                  = jobs/logs/drift_mnist_n5_h$(h).out
+error                   = jobs/logs/drift_mnist_n5_h$(h).err
+
+should_transfer_files   = NO
+
+queue h from jobs/drift_params_n5.txt

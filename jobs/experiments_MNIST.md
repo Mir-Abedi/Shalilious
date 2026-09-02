@@ -48,19 +48,19 @@ The convex sweep is the same 21 jobs with `environment = "MODEL=linear"` in the 
 it is a separate submission rather than a second model in the same job, to stay inside
 the 40-job budget.
 
-**Results.** One CSV per run in `runs/mnist/drift_small_cnn/`, named
+**Results.** One CSV per run in `runs/mnist/drift_small_cnn_n10/`, named
 `targeth<H>_s<seed>.csv`, columns
 `round, grad_computations, train_loss, drift, grad_norm, h_label`. Drift and grad_norm
 are empty on rows logged but not measured. Drift-measurement gradients are not counted in
 `grad_computations`.
 
-**Plot.** `python plots/drift_vs_heterogeneity.py runs/mnist/drift_small_cnn`
--> `plots/drift_vs_heterogeneity_mnist_drift_small_cnn.png`. The figure is named after the run
+**Plot.** `python plots/drift_vs_heterogeneity.py runs/mnist/drift_small_cnn_n10`
+-> `plots/drift_vs_heterogeneity_mnist_drift_small_cnn_n10.png`. The figure is named after the run
 dir; pass the dir explicitly, or it plots the CIFAR-100 runs. Three panels: absolute drift,
 drift relative to ||g|| (which controls for gradients shrinking as training converges), and
 the final training loss the drift costs.
 
-![drift vs heterogeneity, MNIST](../plots/drift_vs_heterogeneity_mnist_drift_small_cnn.png)
+![drift vs heterogeneity, MNIST](../plots/drift_vs_heterogeneity_mnist_drift_small_cnn_n10.png)
 
 ### Results
 
