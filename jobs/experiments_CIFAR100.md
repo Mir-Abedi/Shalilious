@@ -72,6 +72,9 @@ Gradient evaluations made for drift measurement are deliberately NOT counted in
 `grad_computations`, which stays a pure optimization-cost axis.
 
 **Plot.** `python plots/drift_vs_heterogeneity.py` -> `plots/drift_vs_heterogeneity.png`.
+
+![drift vs heterogeneity, CIFAR-100](../plots/drift_vs_heterogeneity.png)
+
 Three panels: absolute drift, drift relative to ||g|| (which controls for gradients
 shrinking as training converges), and the final training loss that the drift costs.
 
@@ -202,6 +205,9 @@ Final training loss after 100 epochs (mean of 3 seeds +- sd):
   there is none.
 
 **Plot.** `python plots/loss_vs_sync_interval.py` -> `plots/loss_vs_sync_interval.png`.
+
+![loss vs sync interval](../plots/loss_vs_sync_interval.png)
+
 One panel per K, one curve per heterogeneity level, and both centralized references on
 every panel: batch 1280 dotted (the like-for-like control, which sits underneath the K=1
 curves and separates from K=5 on) and batch 64 dashed. Log y-axis: batch-64 SGD reaches
