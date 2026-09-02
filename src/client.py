@@ -5,16 +5,24 @@ from torch.utils.data import DataLoader, Subset
 
 
 class Client:
-    def __init__(self, dataset, indices, model_fn, batch_size, lr, device):
+    def __init__(self, dataset, indices, model_fn, batch_size, lr, device, seed=None):
         self.n = len(indices)
         self.lr = lr
         self.device = device
         self.model = model_fn().to(device)
+        # A private generator makes paired-seed experiments reproducible even when the
+        # number or order of clients changes.  Existing callers keep the old behaviour
+        # when seed is omitted.
+        generator = None
+        if seed is not None:
+            generator = torch.Generator()
+            generator.manual_seed(int(seed))
         self.loader = DataLoader(
             Subset(dataset, list(indices)),
             batch_size=min(batch_size, self.n),
             shuffle=True,
             drop_last=False,
+            generator=generator,
         )
         self._it = iter(self.loader)
         # Separate loader for drift measurement: no shuffling, so the accumulation order

@@ -3,7 +3,44 @@ import os
 import pickle
 
 import numpy as np
+import torch
+from torch.utils.data import Dataset
 from torchvision import datasets, transforms
+
+
+class DeterministicGaussianNoise(Dataset):
+    """A fixed covariate-shifted view of a tensor dataset.
+
+    Noise is generated from ``seed + index`` rather than the process RNG.  The same
+    example is therefore identical across epochs and methods, which is important when
+    a study is meant to change local computation rather than augmentation noise.
+    ``std`` is measured after the wrapped dataset's normalization transform.
+    """
+
+    def __init__(self, dataset, std=0.8, seed=0):
+        self.dataset = dataset
+        self.std = float(std)
+        self.seed = int(seed)
+        self._noise_cache = {}
+        # Preserve the conventional label attributes used by analysis code.
+        if hasattr(dataset, "targets"):
+            self.targets = dataset.targets
+        if hasattr(dataset, "classes"):
+            self.classes = dataset.classes
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        x, y = self.dataset[index]
+        index = int(index)
+        noise = self._noise_cache.get(index)
+        if noise is None:
+            generator = torch.Generator()
+            generator.manual_seed(self.seed + index)
+            noise = torch.randn(x.shape, generator=generator, dtype=x.dtype)
+            self._noise_cache[index] = noise
+        return x + self.std * noise, y
 
 
 def coarse_labels(root):
