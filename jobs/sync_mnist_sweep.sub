@@ -1,5 +1,5 @@
-# MNIST train loss vs. synchronization interval -- 24 jobs (8 K x 3 heterogeneity levels),
-# three seeds inside each. Submit the per-panel ceilings separately (8 more jobs, 32 total):
+# MNIST train loss vs. synchronization interval -- 32 jobs (8 K x 4 heterogeneity levels),
+# three seeds inside each. Submit the centralized reference separately (33 jobs total):
 #   condor_submit jobs/sync_mnist_sweep.sub
 #   condor_submit jobs/sgd_mnist_matched.sub
 # See jobs/experiments_MNIST.md.

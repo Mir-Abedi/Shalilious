@@ -148,100 +148,49 @@ x-axis needs to be treated as continuous.
 
 ## 2. Train loss vs. synchronization interval  (MNIST port)
 
-**Claim.** Given a fixed communication budget, more local work per round helps up to a
-point, and heterogeneity decides where that point is.
+**Claim.** Synchronizing less often stalls convergence, and heterogeneity multiplies the
+damage.
 
-**How this differs from CIFAR-100 experiment 2.** The CIFAR-100 version holds the
-*gradient* budget fixed (100 epochs in every cell) and lets rounds shrink as K grows, so
-the only variable is how often clients sync. Here **rounds are fixed at 100** and the
-gradient budget grows with K instead:
+**Design.** Every cell spends the same gradient budget -- 10 epochs = 6e5 sample-gradients
+-- so rounds shrink as K grows and the only variable is how often clients synchronize. Any
+loss difference across panels is the cost of syncing less, not a difference in compute.
+This is the CIFAR-100 design unchanged; only the budget and the client count differ.
 
-    K            1      5     10     20     40     70    100    150
-    rounds     100    100    100    100    100    100    100    100
-    grads      64k   320k   640k   1.3M   2.6M   4.5M   6.4M   9.6M
-    epochs     1.1    5.3   10.7   21.3   42.7   74.7  106.7  160.0
+    K          1     5    10    20    40    70   100   150
+    rounds   938   188    94    47    23    13     9     6
 
-So the two experiments answer different questions. CIFAR-100 asks *what does syncing less
-cost at equal compute*; this asks *what does more local work buy at equal communication*.
-The K=1 arm here is deliberately undertrained (~1 epoch) — that is the honest answer to
-"one round of communication per step buys you very little", not a defect.
+**Note on the high-K panels.** At a 10-epoch budget, K=150 buys only 6 communication
+rounds and K=100 only 9. The final loss is still well defined, but those curves have very
+few points and the sweep cannot say much about the *shape* of convergence there. Raising
+the budget is the only fix; it is not a defect of the design.
 
-**Per-panel centralized ceiling.** Because the panels no longer share a budget, the single
-reference curve the CIFAR-100 version uses does not apply. Each K instead gets its own
-centralized control at matched compute: `100*K` updates of batch 640, which is the same
-`64000*K` sample-gradients the panel spends, at the distributed arm's effective batch
-(10 clients x 64). It is the ceiling that compute could have reached with no
-synchronization at all. `jobs/sgd_mnist_matched.sh`.
+**Centralized SGD reference.** Local SGD with ONE client is exactly centralized SGD:
+aggregation over a single client is the identity and no drift is possible. The reference
+therefore needs no new code -- it is `--clients 1 --local-steps 1 --rounds 938
+--batch-size 640`, batch-640 SGD over the same 6e5 budget. Batch 640 because that is the
+distributed arm's EFFECTIVE batch (10 clients x 64); CIFAR-100 experiment 2 established
+that a batch-64 reference measures a batch-size effect rather than a cost of distribution.
+It has no clients and therefore no heterogeneity, so one run serves as the reference on
+all 8 panels, and at K=1 it is an identity check: one local step plus shard-size-weighted
+averaging IS batch-640 SGD, so it must land on the K=1 curves.
 
-At K=1 that control is an identity check rather than a reference: one local step plus
-shard-size-weighted averaging IS batch-640 SGD, so it must land on the K=1 curves. Batch
-640 rather than 64 on purpose — CIFAR-100 experiment 2 established that a batch-64
-reference measures a batch-size effect, not a cost of distribution.
-
-**Configuration.** `small_cnn`, full MNIST, 10 clients, lr 0.05, batch 64, 100 rounds,
-`H_label` in {0.0, 0.5, 1.0} via `by_target_h`, loss every 2 rounds, 3 seeds — 24 jobs
-plus 8 ceilings, 32 total.
+**Configuration.** `small_cnn`, full MNIST, 10 clients, lr 0.05, batch 64, `H_label` in
+{0.0, 0.5, 0.9, 1.0} via `by_target_h`, 3 seeds, ~100 logged points per curve -- 32 jobs
+plus 1 for the reference. H=0.9 is included to resolve the top of the range, where
+experiment 1 found drift accelerating sharply between 0.9 and 1.0.
 
 **Running.**
 
-    condor_submit jobs/sync_mnist_sweep.sub      # cluster, 24 jobs
-    condor_submit jobs/sgd_mnist_matched.sub     # the 8 per-panel ceilings
+    condor_submit jobs/sync_mnist_sweep.sub      # cluster, 32 jobs
+    condor_submit jobs/sgd_mnist_matched.sub     # the centralized reference
 
 **Results.** CSVs in `runs/mnist/sync/`, named `K<K>_h<H>_s<seed>.csv` and
-`centralK<K>_s<seed>.csv`.
+`matched_s<seed>.csv`.
 
-**Plot.** `python plots/loss_vs_sync_interval.py runs/mnist/sync rounds`
--> `plots/loss_vs_sync_interval_mnist_sync.png`. Plotted against **communication rounds**,
-not gradient computations: rounds are what every panel shares in this design, and a
-gradient axis would span 150x across the grid. The dotted line on each panel is that
-panel's own centralized ceiling.
+**Plot.** `python plots/loss_vs_sync_interval.py runs/mnist/sync`
+-> `plots/loss_vs_sync_interval_mnist_sync.png`. One panel per K, one curve per
+heterogeneity level, and the centralized reference dotted on every panel. Log y-axis.
 
 ### Results
 
-_Pending — submitted 2026-09-02 on SaarlandHPC, condor clusters **185323** (24 sweep jobs)
-and **185324** (8 ceilings)._
-
-## 2. Does the H=1.0 turnover survive when clients outnumber their classes?
-
-**Claim under test.** The drop in `drift/||g||` at H=1.0 in experiment 1 is caused by the
-*m=1 corner* — each client holding exactly one digit, so its local objective is
-single-class cross-entropy with no interior minimum — and not by heterogeneity as such. If
-so, a partition where no client is ever single-class should stay monotone all the way to
-its own ceiling.
-
-**Why 5 clients and not 8.** `by_target_h` requires the client count to divide the label
-groups it skews over, so on MNIST's 10 digits only 10, 5 and 2 are available. 8 would raise
-rather than silently miss the target — and would not fix anything anyway, since blocks of
-[2,2,1,1,1,1,1,1] leave six of eight clients single-class at the top of the range. 5 clients
-gives every client exactly `m=2` digits, at the cost of a ceiling of
-`1 - log(2)/log(10) = 0.6990`.
-
-**The decisive point is H≈0.699**, the ceiling, where each client holds essentially only its
-two digits (measured: 5999 and 5998 of its own, 0–1 of each other digit). That is the exact
-analogue of experiment 1's degenerate corner with `m=2` instead of `m=1`. If the turnover
-reappears there, the cause is heterogeneity; if it does not, the cause is single-class
-degeneracy.
-
-**Configuration.** Identical to experiment 1 except for the client count: `small_cnn`, full
-MNIST, **5 clients**, **480 rounds**, K=5, lr 0.05, batch 64, drift every 20 rounds (24
-measurements), loss every 40. H swept over {0.00, 0.05, ..., 0.65} plus 0.69 and 0.698 —
-16 jobs, 3 seeds each.
-
-480 rounds rather than 240 holds the gradient budget fixed at 12.8 epochs: a round is
-`clients x K x batch` samples, so halving the clients doubles the rounds needed. The two
-sweeps are therefore comparable point-for-point on the H interval they share, [0, 0.65].
-
-**Running.**
-
-    condor_submit jobs/drift_mnist_n5_sweep.sub          # 16 jobs
-    CLIENTS=5 jobs/drift_mnist_one.sh 0.698              # single cell, locally
-
-**Results.** `runs/mnist/drift_small_cnn_n5/targeth<H>_s<seed>.csv`, same columns as
-experiment 1.
-
-**Plot.** `python plots/drift_vs_heterogeneity.py runs/mnist/drift_small_cnn_n5`
--> `plots/drift_vs_heterogeneity_mnist_drift_small_cnn_n5.png`.
-
-### Results
-
-_Pending — submitted 2026-09-02 on SaarlandHPC, condor cluster **185325**, 16 jobs x 3 seeds._
+_Pending._
