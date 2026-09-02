@@ -1,5 +1,5 @@
-# MNIST trust-region Local SGD -- 48 jobs (6 rho x 8 K), each running both heterogeneity
-# levels x 3 seeds = 288 runs.  condor_submit jobs/ball_mnist_sweep.sub
+# MNIST trust-region Local SGD -- 30 jobs (5 rho x 6 K), each running both heterogeneity
+# levels x 3 seeds = 180 runs.  condor_submit jobs/ball_mnist_sweep.sub
 # See jobs/experiments_MNIST.md.
 
 universe                = docker

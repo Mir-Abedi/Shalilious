@@ -15,7 +15,7 @@ PY=.venv/bin/python
 
 CLIENTS=10                          # must divide the 10 MNIST digits for target_h
 BATCH=64
-BUDGET=1200000                      # 20 epochs x 60000 samples
+BUDGET=600000                       # 10 epochs x 60000 samples
 ROUNDS=$("$PY" -c "print(max(1, round($BUDGET/($CLIENTS*$K*$BATCH))))")
 EVERY=$("$PY" -c "print(max(1, $ROUNDS//100))")
 
@@ -29,7 +29,7 @@ for H in 1.0 0.75; do
       --partition target_h --target-h "$H" --seed "$SEED" \
       --clients $CLIENTS --rounds "$ROUNDS" --local-steps "$K" \
       --model small_cnn --lr 0.05 --batch-size $BATCH \
-      --rho "$RHO" --grad-batch 2048 \
+      --rho "$RHO" --grad-batch 512 \
       --eval-every "$EVERY" --exact-cos-every 10 --drift-every 0 \
       --out "runs/mnist/ball/K${K}_rho${RHO}_h${H}_s${SEED}.csv"
   done

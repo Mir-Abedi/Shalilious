@@ -206,21 +206,34 @@ and confines every client's local iterates to the ball B(w_t, R_t). A tentative 
 u = w - eta*g that leaves the ball is projected onto its surface, after which that client
 stops for the round. rho -> 0 is one-shot averaging, rho = infinity is ordinary Local SGD.
 See experiment 3 in [experiments_CIFAR100.md](experiments_CIFAR100.md) for the full
-derivation and for how ||g_t|| is estimated (an unbiased 2048-sample minibatch gradient at
-w_t, costing 1/K of a round's training work).
+derivation and for how ||g_t|| is estimated (an unbiased minibatch gradient at w_t --
+512 samples here, 2048 on CIFAR-100).
 
 **Configuration.** `small_cnn`, full MNIST, **10 clients**, lr 0.05, batch 64, equal
-gradient budget of **20 epochs** = 1.2e6 sample-gradients. Swept over
-rho in {0.5, 1, 2, 4, 8, inf}, K in {1, 5, 10, 20, 40, 70, 100, 150}, and H_label in
-{1.0, 0.75}, 3 seeds each -- 288 runs in 48 jobs, one per (rho, K).
+gradient budget of **10 epochs** = 6e5 sample-gradients, radius estimated from a
+**512**-sample minibatch. Swept over rho in {0.5, 1, 2, 4, inf}, K in
+{5, 10, 20, 40, 70, 100}, and H_label in {1.0, 0.75}, 3 seeds each -- 180 runs in 30 jobs,
+one per (rho, K).
 
-    K          1     5    10    20    40    70   100   150
-    rounds  1875   375   188    94    47    27    19    12
+    K          5    10    20    40    70   100
+    rounds   188    94    47    23    13     9
 
 rho starts at 0.5 rather than CIFAR-100's 0.25: the smoke run there found every client
-hitting the ball by local step ~2 at rho=1, so the informative range sits higher. rho=8 is
-added at the top for the same reason. H uses CIFAR-100's {1.0, 0.75} so the two datasets
-compare directly, and the K grid extends to 150 to line up with experiment 2.
+hitting the ball by local step ~2 at rho=1, so the informative range sits higher. H uses
+CIFAR-100's {1.0, 0.75} so the two datasets compare directly.
+
+**What the grid deliberately excludes.** K=1 is dropped: with a single local step the ball
+either binds on that step or does nothing, so there is no trajectory to constrain, and it
+was by far the most expensive cell -- at K=1 a round trains on 640 samples, so a
+2048-sample radius estimate was 76% of the compute. K=150 and rho=8 are dropped as the
+thinnest and least informative ends of their axes. The 512-sample radius estimate replaces
+2048 for the same reason: the radius only needs the SCALE of ||g_t||, and rho sweeps a
+sixteenfold range around it, so a noisier estimate is cheap insurance. Overhead is now
+16% of a round's training work at K=5 and 1% at K=100.
+
+**Note on the high-K cells.** At a 10-epoch budget K=100 buys only 9 rounds and K=70 only
+13, so the per-round diagnostics (`ball_hits`, `cos_client`) rest on very few points there.
+Final loss is unaffected.
 
 rho=infinity is implemented as radius=None, which delegates to the ordinary
 `Client.local_steps`, so the control arm is the same code path rather than a second
@@ -234,11 +247,8 @@ x-axis: at equal rounds the tight-rho arms would be being compared at less compu
 
 **Running.**
 
-    condor_submit jobs/ball_mnist_sweep.sub     # cluster, 48 parallel jobs
+    condor_submit jobs/ball_mnist_sweep.sub     # cluster, 30 parallel jobs
     jobs/ball_mnist_one.sh <rho> <K>            # one cell, locally
-
-This exceeds the 40-job convention in CLAUDE.md, with permission: the scheduler decides how
-many run concurrently anyway.
 
 **Results.** One CSV per run in `runs/mnist/ball/`, named
 `K<K>_rho<rho>_h<H>_s<seed>.csv`, with `radius`, `ball_hits`, `mean_hit_step`,
