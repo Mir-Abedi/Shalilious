@@ -41,9 +41,9 @@ def main():
     # A run dir per dataset keeps CIFAR-100 and MNIST curves out of each other's plot.
     run_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "runs")
     # Name the figure after the run dir so a second dataset does not overwrite the first.
-    tag = os.path.basename(os.path.normpath(run_dir))
+    tag = os.path.relpath(os.path.normpath(run_dir), os.path.join(ROOT, "runs"))
     out = os.path.join(ROOT, "plots", "drift_vs_heterogeneity"
-                       + ("" if tag == "runs" else f"_{tag}") + ".png")
+                       + ("" if tag == "." else "_" + tag.replace(os.sep, "_")) + ".png")
     runs = [r for r in (read_run(f) for f in glob.glob(os.path.join(run_dir, "*.csv"))) if r]
     if not runs:
         raise SystemExit(f"no {run_dir}/*.csv contained drift measurements -- run with --drift-every N")
@@ -53,6 +53,13 @@ def main():
         by_h[round(h, 3)].append((a, rel, loss))
     xs = sorted(by_h)
     n_seeds = min(len(by_h[x]) for x in xs)
+
+    # Caption straight off the CSVs, so it cannot go stale against the run it describes.
+    # "runs" is the legacy top-level dir, which holds the CIFAR-100 sweep.
+    label = "CIFAR-100" if tag == "." else tag
+    last = list(csv.DictReader(open(sorted(glob.glob(os.path.join(run_dir, "*.csv")))[0])))[-1]
+    rounds = int(last["round"])
+    per_round = int(last["grad_computations"]) // rounds
 
     def stats(i):
         mean = [st.mean(v[i] for v in by_h[x]) for x in xs]
@@ -89,8 +96,8 @@ def main():
 
     fig.suptitle("Client drift grows with label heterogeneity", fontsize=13, color=INK, y=0.99)
     fig.text(0.5, 0.005,
-             f"CIFAR-100, small_cnn, 20 clients x 2500 samples each, K=5 local steps, "
-             f"100 rounds, {n_seeds} seeds per point (error bars +-1 sd)",
+             f"{label}, {rounds} rounds x {per_round} sample-gradients per round, "
+             f"{n_seeds} seeds per point (error bars +-1 sd)",
              ha="center", fontsize=9, color=INK2)
     fig.tight_layout(rect=[0, 0.035, 1, 0.96])
     fig.savefig(out, dpi=160, facecolor=SURFACE)
