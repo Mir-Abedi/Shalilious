@@ -58,15 +58,33 @@ def test_iid_shards_are_near_equal():
     assert sizes.max() - sizes.min() <= 1, f"iid sizes uneven: {sizes}"
 
 
-def test_models_output_100_logits():
+def test_models_match_their_dataset_shape():
+    """Every model takes (in_ch, n_classes, size) and must fit both datasets."""
     import torch
 
-    from models import resnet18, small_cnn
+    from data import DATASETS
+    from models import linear, resnet18, small_cnn
 
-    x = torch.randn(2, 3, 32, 32)
-    for name, fn in [("small_cnn", small_cnn), ("resnet18", resnet18)]:
-        out = fn()(x)
-        assert out.shape == (2, 100), f"{name} gave {tuple(out.shape)}, want (2, 100)"
+    for ds, spec in DATASETS.items():
+        c, n, sz = spec["in_ch"], spec["n_classes"], spec["size"]
+        x = torch.randn(2, c, sz, sz)
+        for name, fn in [("small_cnn", small_cnn), ("resnet18", resnet18), ("linear", linear)]:
+            out = fn(c, n, sz)(x)
+            assert out.shape == (2, n), f"{ds}/{name} gave {tuple(out.shape)}, want (2, {n})"
+
+
+def test_target_h_spans_the_full_range_on_ten_labels():
+    """MNIST has 10 label groups, not 20: the partitioner must read that off the labels."""
+    import numpy as np
+
+    from data import by_target_h, label_heterogeneity
+
+    coarse = np.repeat(np.arange(10), 200)
+    pool = np.arange(len(coarse))
+    for h in (0.0, 0.5, 1.0):
+        shards = by_target_h(coarse, pool, 10, np.random.default_rng(0), h=h)
+        got = label_heterogeneity(coarse, shards)
+        assert abs(got - h) < 0.02, f"asked for H={h}, partition measures {got:.3f}"
 
 
 def test_aggregate_is_a_weighted_mean():
@@ -289,7 +307,8 @@ if __name__ == "__main__":
     test_partitions_are_disjoint_covers()
     test_low_alpha_concentrates_superclasses()
     test_iid_shards_are_near_equal()
-    test_models_output_100_logits()
+    test_models_match_their_dataset_shape()
+    test_target_h_spans_the_full_range_on_ten_labels()
     test_label_heterogeneity_bounds()
     test_by_superclass_reaches_maximum_heterogeneity()
     test_by_target_h_hits_its_target()

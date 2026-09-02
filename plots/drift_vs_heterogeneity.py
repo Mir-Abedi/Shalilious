@@ -1,6 +1,6 @@
-"""Drift vs. label heterogeneity.  Usage: python plots/drift_vs_heterogeneity.py
+"""Drift vs. label heterogeneity.  Usage: python plots/drift_vs_heterogeneity.py [run_dir]
 
-Reads every CSV in runs/ carrying drift measurements, groups the seeds at each
+Reads every CSV in run_dir (default runs/) carrying drift measurements, groups the seeds at each
 H_label, and plots the mean with +-1 sd error bars.
 
 x = H_label, the partition's measured normalized mutual information I(C;Y)/H(Y).
@@ -10,6 +10,7 @@ import csv
 import glob
 import os
 import statistics as st
+import sys
 from collections import defaultdict
 
 import matplotlib
@@ -18,7 +19,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-OUT = os.path.join(ROOT, "plots", "drift_vs_heterogeneity.png")
 
 # Validated palette: categorical slots 1 (blue) and 2 (orange), light mode.
 BLUE, ORANGE = "#2a78d6", "#eb6834"
@@ -38,9 +38,15 @@ def read_run(path):
 
 
 def main():
-    runs = [r for r in (read_run(f) for f in glob.glob(os.path.join(ROOT, "runs", "*.csv"))) if r]
+    # A run dir per dataset keeps CIFAR-100 and MNIST curves out of each other's plot.
+    run_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "runs")
+    # Name the figure after the run dir so a second dataset does not overwrite the first.
+    tag = os.path.basename(os.path.normpath(run_dir))
+    out = os.path.join(ROOT, "plots", "drift_vs_heterogeneity"
+                       + ("" if tag == "runs" else f"_{tag}") + ".png")
+    runs = [r for r in (read_run(f) for f in glob.glob(os.path.join(run_dir, "*.csv"))) if r]
     if not runs:
-        raise SystemExit("no runs/*.csv contained drift measurements -- run with --drift-every N")
+        raise SystemExit(f"no {run_dir}/*.csv contained drift measurements -- run with --drift-every N")
 
     by_h = defaultdict(list)
     for h, a, rel, loss in runs:
@@ -87,8 +93,8 @@ def main():
              f"100 rounds, {n_seeds} seeds per point (error bars +-1 sd)",
              ha="center", fontsize=9, color=INK2)
     fig.tight_layout(rect=[0, 0.035, 1, 0.96])
-    fig.savefig(OUT, dpi=160, facecolor=SURFACE)
-    print(f"wrote {OUT}  ({len(runs)} runs, {len(xs)} H values, {n_seeds} seeds each)")
+    fig.savefig(out, dpi=160, facecolor=SURFACE)
+    print(f"wrote {out}  ({len(runs)} runs, {len(xs)} H values, {n_seeds} seeds each)")
 
 
 if __name__ == "__main__":

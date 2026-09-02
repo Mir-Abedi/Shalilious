@@ -1,0 +1,23 @@
+# Drift vs. label heterogeneity on MNIST -- 21 jobs, one per H_label, seeds 0,1,2 each.
+# Submit from the repo root:  condor_submit jobs/drift_mnist_sweep.sub
+# Swap MODEL below to linear for the convex arm. See jobs/experiments_MNIST.md.
+
+universe                = docker
+docker_image            = amirabedi/torch-with-other-stuff-1.0.2
+
+executable              = jobs/drift_mnist_one.sh
+arguments               = $(h)
+environment             = "MODEL=small_cnn"
+initialdir              = $ENV(PWD)
+
+request_cpus            = 2
+request_gpus            = 1
+request_memory          = 8GB
+
+log                     = jobs/logs/drift_mnist.log
+output                  = jobs/logs/drift_mnist_h$(h).out
+error                   = jobs/logs/drift_mnist_h$(h).err
+
+should_transfer_files   = NO
+
+queue h from jobs/drift_params.txt

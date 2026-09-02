@@ -3,25 +3,27 @@ import argparse
 import csv
 import os
 import random
+from functools import partial
 
 import numpy as np
 import torch
 
 from client import Client
-from data import (by_superclass, by_target_h, dirichlet, iid, label_heterogeneity,
-                  load_cifar100)
-from models import resnet18, small_cnn
+from data import (DATASETS, by_superclass, by_target_h, dirichlet, iid,
+                  label_heterogeneity)
+from models import linear, resnet18, small_cnn
 from projected import ProjectedClient, ProjectedServer
 from server import Server
 
 PARTITIONS = {"iid": iid, "dirichlet": dirichlet, "by_superclass": by_superclass,
               "target_h": by_target_h}
 SERVERS = {"fedavg": Server}
-MODELS = {"small_cnn": small_cnn, "resnet18": resnet18}
+MODELS = {"small_cnn": small_cnn, "resnet18": resnet18, "linear": linear}
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Mini-batch SGD vs Local SGD on CIFAR-100")
+    p = argparse.ArgumentParser(description="Mini-batch SGD vs Local SGD")
+    p.add_argument("--dataset", choices=DATASETS, default="cifar100")
     p.add_argument("--clients", type=int, default=5)
     p.add_argument("--partition", choices=PARTITIONS, default="iid")
     p.add_argument("--alpha", type=float, default=0.5, help="Dirichlet skew; lower is more skewed")
@@ -58,7 +60,8 @@ def default_out(a):
         a.partition, a.partition)
     if a.rho is not None:
         part += f"_rho{a.rho}"
-    return f"runs/{a.model}_{part}_n{a.clients}_K{a.local_steps}_lr{a.lr}_s{a.seed}.csv"
+    return (f"runs/{a.dataset}/{a.model}_{part}_n{a.clients}"
+            f"_K{a.local_steps}_lr{a.lr}_s{a.seed}.csv")
 
 
 def main():
@@ -69,7 +72,10 @@ def main():
     rng = np.random.default_rng(a.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    dataset, pool, coarse = load_cifar100(a.data_root, a.data_frac, a.seed)
+    spec = DATASETS[a.dataset]
+    dataset, pool, coarse = spec["load"](a.data_root, a.data_frac, a.seed)
+    # coarse holds the labels the skew is drawn over: CIFAR-100 superclasses, MNIST digits.
+    model_fn = partial(MODELS[a.model], spec["in_ch"], spec["n_classes"], spec["size"])
     kw = {"dirichlet": {"alpha": a.alpha}, "target_h": {"h": a.target_h}}.get(a.partition, {})
     shards = PARTITIONS[a.partition](coarse, pool, a.clients, rng, **kw)
 
@@ -83,18 +89,19 @@ def main():
     # rho=inf is ordinary Local SGD -- the ball is never binding, so take the plain path
     ball = a.rho is not None and a.rho != float("inf")
     cls = ProjectedClient if ball else Client
-    clients = [cls(dataset, s, MODELS[a.model], a.batch_size, a.lr, device) for s in shards]
+    clients = [cls(dataset, s, model_fn, a.batch_size, a.lr, device) for s in shards]
     if ball:
-        server = ProjectedServer(MODELS[a.model](), clients, dataset, pool, device,
+        server = ProjectedServer(model_fn(), clients, dataset, pool, device,
                                  rho=a.rho, grad_batch=a.grad_batch)
     else:
-        server = SERVERS[a.server](MODELS[a.model](), clients, dataset, pool, device)
+        server = SERVERS[a.server](model_fn(), clients, dataset, pool, device)
     h_label = label_heterogeneity(coarse, shards)
 
     out = a.out or default_out(a)
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     print(f"{len(clients)} clients on {device}; shard sizes {[c.n for c in clients]}")
-    print(f"H_label = {h_label:.4f} (measured over the 20 coarse superclasses) -> {out}")
+    n_groups = int(coarse.max()) + 1
+    print(f"H_label = {h_label:.4f} (measured over {n_groups} label groups) -> {out}")
     with open(out, "w", newline="") as f:
         w = csv.writer(f)
         # h_label is constant per run; carried as a column so a plot needs only the CSVs.
