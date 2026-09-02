@@ -191,6 +191,13 @@ plus 8 ceilings, 32 total.
 **Results.** CSVs in `runs/mnist/sync/`, named `K<K>_h<H>_s<seed>.csv` and
 `centralK<K>_s<seed>.csv`.
 
+**Plot.** `python plots/loss_vs_sync_interval.py runs/mnist/sync rounds`
+-> `plots/loss_vs_sync_interval_mnist_sync.png`. Plotted against **communication rounds**,
+not gradient computations: rounds are what every panel shares in this design, and a
+gradient axis would span 150x across the grid. The dotted line on each panel is that
+panel's own centralized ceiling.
+
 ### Results
 
-_Pending._
+_Pending — submitted 2026-09-02 on SaarlandHPC, condor clusters **185323** (24 sweep jobs)
+and **185324** (8 ceilings)._
