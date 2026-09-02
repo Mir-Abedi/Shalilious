@@ -75,7 +75,7 @@ Gradient evaluations made for drift measurement are deliberately NOT counted in
 Three panels: absolute drift, drift relative to ||g|| (which controls for gradients
 shrinking as training converges), and the final training loss that the drift costs.
 
-## Results
+### Results
 
 Run 2026-09-02 on SaarlandHPC (condor, docker universe, Tesla P100), 21 jobs x 3 seeds,
 all 63 runs completed with no failures.
@@ -126,6 +126,75 @@ A pilot on synthetic data had suggested absolute drift might turn over near H = 
 the relative measure kept rising. That did not reproduce on CIFAR-100 -- both measures are
 monotone to H = 1. The `grad_norm` column stays worth logging, but the concern it was
 guarding against did not materialise.
+
+## 2. Train loss vs. synchronization interval
+
+**Claim.** Synchronizing less often stalls convergence, and heterogeneity multiplies the
+damage.
+
+**Design.** Every cell spends the same gradient budget -- 100 epochs = 5e6 sample-gradients
+-- so rounds shrink as K grows and the only variable is how often clients synchronize. Any
+loss difference across panels is the cost of syncing less, not a difference in compute.
+
+    K        1     5    10    20    40    70   100   150
+    rounds 3906   781   391   195    98    56    39    26
+
+**Centralized SGD reference.** Local SGD with ONE client is exactly centralized SGD:
+aggregation over a single client is the identity and no drift is possible. So the
+reference needs no new code -- it is `--clients 1 --local-steps 1000 --rounds 78
+--batch-size 64`, plain batch-64 SGD over the same 5e6 budget. It has no clients and
+therefore no heterogeneity, so one run serves as the ceiling on all 8 panels.
+
+**Configuration.** small_cnn, full CIFAR-100, 20 clients x 2500 samples each, lr 0.05,
+batch 64, H_label in {0.0, 0.5, 1.0} via `by_target_h`, 3 seeds -- 24 jobs plus 1 for the
+reference.
+
+**Running.**
+
+    condor_submit jobs/sync_sweep.sub      # cluster, 24 jobs
+    condor_submit jobs/sgd_baseline.sub    # the centralized reference
+
+**Results.** CSVs in `runs/sync/`, named `K<K>_h<H>_s<seed>.csv` and `central_s<seed>.csv`
+(kept out of `runs/` proper so they do not collide with experiment 1's K=5 filenames or
+enter its plot glob). Run 2026-09-02, all 75 runs completed with no failures.
+
+Final training loss after 100 epochs (mean of 3 seeds +- sd):
+
+        K      H=0.0             H=0.5             H=1.0
+    --------------------------------------------------------
+        1   0.8536 +-0.0824    0.7588 +-0.0703    0.7108 +-0.0213  
+        5   1.1120 +-0.0314    1.8326 +-0.0563    2.5437 +-0.0450  
+       10   1.2110 +-0.0382    1.9140 +-0.0532    2.7803 +-0.0459  
+       20   1.2956 +-0.0381    1.9513 +-0.0573    2.9835 +-0.0405  
+       40   1.4710 +-0.0499    1.9931 +-0.0581    3.1677 +-0.0395  
+       70   1.4620 +-0.0732    1.9512 +-0.0493    3.2519 +-0.0466  
+      100   1.4068 +-0.0497    1.8897 +-0.0564    3.3029 +-0.0285  
+      150   1.4978 +-0.0606    1.9286 +-0.0283    3.3730 +-0.0365  
+
+    centralized SGD (batch 64): 0.0005 +-0.0000
+
+- **At K=1 heterogeneity costs nothing** -- 0.85 / 0.76 / 0.71 are within noise of each
+  other, and if anything H=1.0 is lowest. This is not luck: one local step followed by a
+  shard-size-weighted average IS exact large-batch SGD, so the partition cannot matter.
+  It is the same identity `test_one_local_step_matches_plain_sgd` asserts, and it makes
+  the effect at larger K attributable to local drift rather than to the setup.
+- **The interaction is the result, not the main effect.** Going K=1 -> 150 costs 0.64 loss
+  on homogeneous data but 2.66 on fully heterogeneous data -- four times the penalty.
+  Syncing rarely is nearly free when clients agree and ruinous when they do not.
+- **Under heterogeneity the loss never stops degrading with K** (2.54 -> 3.37 from K=5 to
+  150, still climbing). On homogeneous data it plateaus around 1.4-1.5 past K=40. So
+  there is a usable ceiling on local work when data is IID, and none when it is skewed.
+- **The distributed-vs-centralized gap dwarfs all of it.** Plain batch-64 SGD reaches
+  5e-4 while the best distributed arm reaches 0.71 -- three orders of magnitude, at an
+  identical gradient budget. The cause is parameter updates, not gradients: centralized
+  SGD takes 78,125 steps of batch 64, while K=1 Local SGD takes 3,906 steps of effective
+  batch 1280. Averaging 20 clients buys a less noisy gradient and pays 20x fewer updates,
+  and at this budget that trade is heavily negative.
+
+**Plot.** `python plots/loss_vs_sync_interval.py` -> `plots/loss_vs_sync_interval.png`.
+One panel per K, one curve per heterogeneity level, centralized SGD dashed on every panel.
+Log y-axis: the reference reaches 5e-4 and a linear axis flattens it onto the baseline.
+
 
 ## 3. Trust-region Local SGD: bounding how far clients travel
 

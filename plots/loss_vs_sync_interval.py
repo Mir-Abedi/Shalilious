@@ -55,6 +55,7 @@ def main():
         if ref[0]:
             ax.plot(ref[0], ref[1], color=REF, linewidth=1.6, linestyle="--",
                     label="centralized SGD", zorder=2)
+        ax.set_yscale("log")   # centralized SGD reaches 5e-4; linear would flatten it
         ax.set_title(f"K = {k}", fontsize=11, color=INK, pad=6)
         ax.set_facecolor(SURFACE)
         ax.grid(alpha=0.25, linewidth=0.6)
