@@ -112,10 +112,40 @@ Two differences worth recording against the CIFAR-100 run:
   pathological corner is simply more pathological on MNIST.
 
 **The relative panel turns over at H=1.0** (10.69 -> 5.30), the only non-monotonicity
-anywhere in either dataset. This is the denominator moving, not the drift: at H=1.0 the run
-is much further from convergence (loss 0.151 vs 0.125 at H=0.95) so ||g|| is
-correspondingly larger. Absolute drift, the panel that matches the theory's
-gradient-dissimilarity constant, keeps rising.
+anywhere in either dataset. It is the denominator moving, not the drift, and the cause is a
+genuine discontinuity in the partition rather than anything about the plot.
+
+`by_target_h` spreads a fraction (1-t) of every digit uniformly over all clients. Just below
+the top of the range that remainder is small but NONZERO -- at H=0.95 client 0 holds 5907
+samples of digit 0 plus about 10 of each other digit. At H=1.0, t is exactly 1 and the
+remainder is exactly zero: client 0 holds 6000 of digit 0 and nothing else. Its local
+objective becomes single-class cross-entropy, which has no interior minimum -- it is
+minimized by sending one logit to +infinity -- so every local step pushes in a direction
+that never saturates.
+
+The global gradient norm shows it directly (seed 0, first 10 measured rounds):
+
+    H=0.90   0.68 1.35 1.63 1.36 1.08 0.84 0.65 0.57 0.46 0.37    rises, then decays
+    H=0.95   0.68 1.35 1.56 1.43 1.04 0.83 0.57 0.67 0.60 0.47    rises, then decays
+    H=1.00   0.68 1.54 3.47 5.35 4.34 1.90 2.17 1.34 3.04 1.13    never settles
+
+Mean ||g|| over the run is 0.566 at H=0.95 and 1.964 at H=1.0, a 3.5x jump against only
+1.5x in the numerator; 1.5/3.5 is the factor of ~2 the ratio drops by. The averaged model
+at H=1.0 is not converging but orbiting -- the centroid of 10 models each collapsing toward
+a different single class. Its LOSS is still reasonable (0.151), because averaging those
+models classifies acceptably; it simply sits nowhere near a stationary point, which is what
+||g|| measures. Absolute drift, the panel that matches the theory's gradient-dissimilarity
+constant, keeps rising throughout.
+
+This is also why CIFAR-100 shows no such turnover, its ratio rising monotonically to 12.72.
+There 20 clients over 20 superclasses give each client one superclass, but the model trains
+on the 100 FINE labels, so every client still faces a 5-class problem and no local objective
+ever degenerates. The turnover is specific to MNIST, where the skew axis and the label space
+are the same 10 classes.
+
+**Consequence for the sweep.** H=1.0 on MNIST is a qualitatively different regime, not the
+last point of a continuum. Read the endpoint separately, or sweep only to 0.95 when the
+x-axis needs to be treated as continuous.
 
 ## 2. Train loss vs. synchronization interval  (MNIST port)
 
