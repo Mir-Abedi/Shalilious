@@ -29,7 +29,7 @@ import torch
 
 from data import DATASETS, DeterministicGaussianNoise
 from plots.notebook_experiments import budget_curve_plot, hard_client_plot
-from studies import make_partition, run_federated
+from studies import loss_stability_metrics, make_partition, run_federated
 
 
 STUDIES = ("hard_client", "client_count", "aggregation", "participation")
@@ -46,7 +46,7 @@ def build_parser():
     parser.add_argument("--data-frac", type=float, default=None)
     parser.add_argument("--data-pool-seed", type=int, default=2026)
     parser.add_argument("--rounds", type=int, default=None,
-                        help="reference rounds; partial-participation rounds are scaled")
+                        help="reference rounds; partial participation scales this value")
     parser.add_argument("--eval-every", type=int, default=None)
     parser.add_argument("--model", choices=("small_cnn", "linear"), default="small_cnn")
     parser.add_argument("--batch-size", type=int, default=64)
@@ -59,7 +59,7 @@ def build_parser():
                         help="skip the expensive exact final gradient-drift pass")
 
     parser.add_argument("--easy-k", type=int, default=5)
-    parser.add_argument("--hard-k-values", nargs="+", type=int, default=[1, 3, 5, 8])
+    parser.add_argument("--hard-k-values", nargs="+", type=int, default=[1, 5, 10, 20])
     parser.add_argument("--noise-std", type=float, default=0.8)
 
     parser.add_argument("--client-counts", nargs="+", type=int, default=[2, 5, 10])
@@ -148,22 +148,32 @@ def run_hard_client(args, dataset, pool, labels):
             dataset, std=args.noise_std, seed=100_000 + seed
         )
         for hard_k in args.hard_k_values:
-            print(f"[hard_client] seed={seed} K_hard={hard_k}", flush=True)
+            print(
+                f"[hard_client] seed={seed} K_clean={args.easy_k} "
+                f"tau_noisy={hard_k} rounds={args.rounds}",
+                flush=True,
+            )
             history, summary = run_federated(
                 dataset, pool, labels, n_clients=2, seed=seed, rounds=args.rounds,
                 local_steps=[args.easy_k, hard_k], partition="iid", shards=shards,
                 client_datasets=[dataset, hard_dataset], aggregation="data",
-                eval_every=args.eval_every, **common_args(args),
+                # Stability needs the actual round-to-round path, not five-round samples.
+                eval_every=1, **common_args(args),
             )
             summary.update({
                 "easy_k": args.easy_k,
                 "hard_k": hard_k,
                 "noise_std": args.noise_std,
+                "hard_loss_gap": (
+                    summary["final_client_losses"][1]
+                    - summary["final_client_losses"][0]
+                ),
+                **loss_stability_metrics(history),
             })
             summaries.append(summary)
             histories.extend(tagged_history(history, seed=seed, hard_k=hard_k))
     save_study(args.output_root, "01_hard_client", histories, summaries,
-               hard_client_plot(summaries))
+               hard_client_plot(histories))
 
 
 def run_client_count(args, dataset, pool, labels):

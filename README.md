@@ -97,26 +97,42 @@ is performed.
 
 ### Experiment 1: unequal local steps for a hard client
 
-This experiment asks whether allocating more local computation to a difficult
-client improves its domain or instead increases drift.
+This experiment asks how the global training trajectory changes when the noisy
+client performs more local work between communication rounds, and whether that
+trajectory becomes more stable.
 
 - Two clients receive one fixed IID split with near-equal sample counts and
   nearly the same label distribution.
-- Client 0 sees ordinary normalized MNIST and always uses `K_easy=5`.
+- Client 0 sees ordinary normalized MNIST and always uses `K_clean=5`.
 - Client 1 sees deterministic Gaussian corruption with standard deviation 0.8
   after normalization. Its local steps are swept over
-  `K_hard in {1, 3, 5, 8}`.
+  $\tau_{\mathrm{noisy}}\in\{1,5,10,20\}$.
 - The corruption is fixed by example index and seed, and the same two shards are
-  reused for every `K_hard` value in that seed.
+  reused for every $\tau_{\mathrm{noisy}}$ value in that seed.
+- Every condition uses the same 30 communication rounds. `K_clean` remains fixed,
+  so $\tau_{\mathrm{noisy}}$ is the only changed optimization parameter.
 - Standard data-size-weighted FedAvg is used at communication.
+- The actual mixed clean/noisy objective is evaluated after every round rather
+  than only every fifth round.
 
-The first plot panel compares the final clean-client and corrupted-client losses.
-The second reports final exact gradient drift. The summary also contains
-per-client accuracy, global loss, local-update count, and processed examples.
-When interpreting the sweep, note that `K_easy` is fixed, so a larger `K_hard`
-also increases total computation. A lower hard-domain loss is evidence that the
-extra allocation helped that domain, but it is not by itself evidence of greater
-compute efficiency. The local-update totals provide that necessary context.
+The figure has communication round on the x-axis and global mixed training loss
+on the y-axis. It contains one mean curve for each $\tau_{\mathrm{noisy}}$, with a ±1 standard
+deviation band across paired seeds. This displays convergence speed, oscillations,
+and cross-seed consistency without treating the clean and noisy clients as
+independent models; both contribute to and are evaluated through one global model.
+
+“More stable” is defined before inspecting the result. `summary.csv` reports the
+fraction of checkpoint transitions where loss increased, the mean and maximum
+positive loss jump, and excess path variation beyond the direct initial-to-final
+change. A smoother curve, smaller upward-jump metrics, and a narrower seed band
+support a stability claim. A lower final loss alone supports faster optimization,
+not greater stability.
+
+With fixed rounds and fixed `K_clean`, increasing $\tau_{\mathrm{noisy}}$ necessarily adds local
+computation: the total update counts are 180, 300, 450, and 750 for noisy K values
+1, 5, 10, and 20 respectively. This is therefore a communication-matched study,
+not an equal-compute comparison. `local_updates` and `examples_processed` remain
+in the outputs so improvements can be interpreted alongside their cost.
 
 This experiment studies covariate shift. Its difficulty is deliberately not
 described by `H_label`, because label histograms can remain almost identical even
@@ -230,6 +246,8 @@ The code implementing these studies is split as follows:
 - `src/run_notebook_experiments.py` — terminal orchestration and CLI;
 - `federated_local_sgd_kaggle.ipynb` — interactive orchestration;
 - `plots/notebook_experiments.py` — seed aggregation and plot templates;
+- `plots/plot_hard_client_history.py` — regenerate the hard-client figure from
+  an existing `history.csv` without rerunning training;
 - `jobs/run_notebook_experiments.sh` — CUDA server wrapper.
 
 ## Layout

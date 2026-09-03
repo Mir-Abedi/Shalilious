@@ -33,6 +33,35 @@ def seed_everything(seed):
         torch.cuda.manual_seed_all(seed)
 
 
+def loss_stability_metrics(history):
+    """Quantify regressions and non-monotone motion in a checkpoint loss path.
+
+    These complement, rather than replace, the loss curve.  A lower final loss is
+    optimization progress; stability means fewer/smaller upward jumps and less path
+    variation beyond the direct distance from initial to final loss.
+    """
+    losses = np.asarray([
+        row["train_loss"] for row in history if row.get("train_loss") is not None
+    ], dtype=float)
+    if len(losses) < 2:
+        return {
+            "loss_increase_fraction": 0.0,
+            "mean_positive_loss_jump": 0.0,
+            "max_positive_loss_jump": 0.0,
+            "loss_excess_path_variation": 0.0,
+        }
+    changes = np.diff(losses)
+    increases = changes[changes > 0]
+    total_variation = float(np.abs(changes).sum())
+    direct_change = float(abs(losses[-1] - losses[0]))
+    return {
+        "loss_increase_fraction": float(np.mean(changes > 0)),
+        "mean_positive_loss_jump": float(increases.mean()) if len(increases) else 0.0,
+        "max_positive_loss_jump": float(increases.max()) if len(increases) else 0.0,
+        "loss_excess_path_variation": max(0.0, total_variation - direct_change),
+    }
+
+
 def _js_divergence(p, q):
     m = 0.5 * (p + q)
 

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import torch
 
 from data import DeterministicGaussianNoise
-from studies import StudyServer
+from studies import StudyServer, loss_stability_metrics
 
 
 def test_deterministic_noise_is_fixed_by_index():
@@ -52,3 +52,17 @@ def test_selected_aggregation_weights_are_renormalized():
     weights = server.aggregation_weights([0, 1], "inverse_js")
     assert abs(sum(weights) - 1.0) < 1e-12
     assert weights[0] > 0 and weights[1] > 0
+
+
+def test_loss_stability_metrics_measure_only_nonmonotone_regressions():
+    history = [
+        {"train_loss": 3.0},
+        {"train_loss": 2.0},
+        {"train_loss": 2.5},
+        {"train_loss": 1.0},
+    ]
+    metrics = loss_stability_metrics(history)
+    assert abs(metrics["loss_increase_fraction"] - 1 / 3) < 1e-12
+    assert metrics["mean_positive_loss_jump"] == 0.5
+    assert metrics["max_positive_loss_jump"] == 0.5
+    assert metrics["loss_excess_path_variation"] == 1.0

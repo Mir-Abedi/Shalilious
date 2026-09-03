@@ -34,33 +34,21 @@ def _mean_sd(rows, x_key, y_key):
     return np.asarray(xs), means, sds
 
 
-def hard_client_plot(summaries):
-    """Domain loss and source-defined drift as the hard client's K changes."""
-    expanded = []
-    for row in summaries:
-        item = dict(row)
-        item["easy_loss"] = row["final_client_losses"][0]
-        item["hard_loss"] = row["final_client_losses"][1]
-        expanded.append(item)
-    fig, axes = plt.subplots(1, 2, figsize=(9.5, 4.2), facecolor=SURFACE)
-    for key, label, color in [
-        ("easy_loss", "clean client", COLORS[0]),
-        ("hard_loss", "corrupted client", COLORS[1]),
-    ]:
-        x, mean, sd = _mean_sd(expanded, "hard_k", key)
-        axes[0].errorbar(x, mean, yerr=sd, marker="o", capsize=3, linewidth=2,
-                         color=color, label=label)
-    x, mean, sd = _mean_sd(expanded, "hard_k", "final_drift")
-    axes[1].errorbar(x, mean, yerr=sd, marker="o", capsize=3, linewidth=2,
-                     color=COLORS[2])
-    axes[0].set(xlabel=r"hard-client local steps $K_{hard}$",
-                ylabel="final client training loss", title="Which domain benefits?")
-    axes[1].set(xlabel=r"hard-client local steps $K_{hard}$",
-                ylabel=r"mean $\|g_i-g\|$", title="Gradient drift at the broadcast point")
-    axes[0].legend(frameon=False)
-    for ax in axes:
-        _style(ax)
-    fig.suptitle("Extra local work on a covariate-shifted client", color=INK, fontsize=13)
+def hard_client_plot(histories):
+    """Round-by-round global loss for each noisy-client local-step setting."""
+    hard_steps = sorted({row["hard_k"] for row in histories})
+    fig, ax = plt.subplots(1, 1, figsize=(8.5, 5.2), facecolor=SURFACE)
+    for color, hard_k in zip(COLORS, hard_steps):
+        rows = [row for row in histories if row["hard_k"] == hard_k]
+        rounds, mean, sd = _mean_sd(rows, "round", "train_loss")
+        ax.plot(rounds, mean, color=color, linewidth=2,
+                label=rf"$\tau_{{\mathrm{{noisy}}}}={hard_k}$")
+        ax.fill_between(rounds, mean - sd, mean + sd,
+                        color=color, alpha=0.14, linewidth=0)
+    ax.set_xlabel("Communication Round", color=INK)
+    ax.set_ylabel("Global Mixed Training Loss", color=INK)
+    ax.legend(frameon=False, ncol=2)
+    _style(ax)
     fig.tight_layout()
     return fig
 
@@ -82,7 +70,7 @@ def budget_curve_plot(histories, *, group_key, group_order, group_labels,
                                               label=group_labels[group])
                 axes[row_index, column].fill_between(x, mean - sd, mean + sd,
                                                       color=color, alpha=0.14, linewidth=0)
-        axes[row_index, 0].set_ylabel("training loss", color=INK)
+        axes[row_index, 0].set_ylabel("Training Loss", color=INK)
         axes[row_index, 0].set_title(
             f"{facet_labels[facet]} — communication budget" if facet_labels[facet]
             else "Communication budget", color=INK, fontsize=11

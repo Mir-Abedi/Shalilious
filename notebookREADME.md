@@ -30,14 +30,24 @@ cell before committing to a long run.
 ## Study 1 — unequal local work for a hard client
 
 Two IID, near-equal shards have the same label mixture. Client 0 sees normalized MNIST;
-client 1 sees a fixed Gaussian-corrupted view of its shard. `K_easy=5` is fixed while
-`K_hard` is swept over `{1,3,5,8}`.
+client 1 sees a fixed Gaussian-corrupted view of its shard. `K_clean=5` is fixed while
+$\tau_{\mathrm{noisy}}$ is swept over `{1,5,10,20}` for the same communication-round budget.
 
-This asks whether extra local optimization closes the corrupted client's objective gap.
-Because total work rises with `K_hard`, interpret both the domain-loss panel and the
-reported computation count. The corruption is deterministic within each seed, so changing
-`K_hard` does not also change the data. This is covariate shift, which `H_label` intentionally
-does not claim to measure.
+This asks how noisy-client local computation changes convergence and stability.
+The single figure plots communication round against the global data-weighted loss
+of the combined clean/noisy client objective, with one mean line and ±1 seed-standard-
+deviation band per $\tau_{\mathrm{noisy}}$. Loss is evaluated every round. Summary metrics record
+the fraction, mean size, and maximum size of upward loss jumps plus excess path
+variation. Lower loss shows optimization progress; fewer upward jumps, lower excess
+variation, and narrower seed bands are the evidence required for a stability claim.
+
+Every condition has the same round budget and `K_clean=5`, so increasing $\tau_{\mathrm{noisy}}$
+adds computation. The result is communication-matched rather than compute-matched,
+and update counts must accompany any conclusion. There is no mathematical mapping
+from Gaussian noise standard deviation to a correct K; `{1,5,10,20}` instead covers
+under-allocation, equal allocation, 2×, and 4× the clean client's local work. The
+corruption is deterministic within each seed. This is covariate shift, which
+`H_label` intentionally does not claim to measure.
 
 ## Study 2 — number of clients
 
